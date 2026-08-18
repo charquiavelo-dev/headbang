@@ -46,19 +46,19 @@ The core delivery path uses ordinary Git, so provider-specific APIs are not requ
 Global CLI and MCP server:
 
 ```bash
-npm install -g headbang
+npm install -g headbang-mcp
 ```
 
 Or run without a global install:
 
 ```bash
-npx headbang status
+npx --package=headbang-mcp headbang status
 ```
 
 For a project dependency:
 
 ```bash
-npm install -D headbang
+npm install -D headbang-mcp
 ```
 
 ## Five-minute setup

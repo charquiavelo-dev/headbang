@@ -1,5 +1,5 @@
 {
-  "name": "headbang",
+  "name": "headbang-mcp",
   "version": "1.0.0",
   "description": "Policy-driven Git workflows for humans and AI agents. Review, commit, project and deliver safely to multiple remotes.",
   "type": "module",
