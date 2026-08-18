@@ -279,4 +279,42 @@ test('failed release merge rolls back local base branches and returns to release
     await rm(base, { recursive: true, force: true });
   }
 });
-\n\ntest('CLI headbang push profile performs the primary push workflow', async () => {\n  const base = await mkdtemp(join(tmpdir(), 'headbang-cli-push-'));\n  const repo = join(base, 'repo');\n  const bare = join(base, 'remote.git');\n\n  try {\n    await mkdir(repo, { recursive: true });\n    await exec('git', ['init', '--bare', bare]);\n    await exec('git', ['init', '-b', 'main', repo]);\n    await git(repo, 'config', 'user.name', 'Test');\n    await git(repo, 'config', 'user.email', 'test@example.com');\n    await writeFile(join(repo, 'README.md'), '# push regression\\n');\n    await git(repo, 'add', '-A');\n    await git(repo, 'commit', '-m', 'feat: initial');\n    await git(repo, 'remote', 'add', 'origin', bare);\n    await writeFile(join(repo, '.headbang.json'), JSON.stringify({\n      version: 1,\n      defaultProfile: 'origin-main',\n      profiles: {\n        'origin-main': {\n          remote: 'origin',\n          targetBranch: 'main',\n          history: 'preserve',\n          permissions: { inspect: true, review: true, push: true }\n        }\n      }\n    }, null, 2));\n\n    const cli = join(process.cwd(), 'dist', 'cli.js');\n    const result = await exec(process.execPath, [cli, 'push', 'origin-main', '--json', '--no-banner'], { cwd: repo });\n    const parsed = JSON.parse(result.stdout);\n    assert.equal(parsed.success, true);\n    const remoteMain = (await git(repo, 'ls-remote', 'origin', 'refs/heads/main')).stdout.trim();\n    assert.ok(remoteMain);\n  } finally {\n    await rm(base, { recursive: true, force: true });\n  }\n});\n
+
+test('CLI headbang push profile performs the primary push workflow', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'headbang-cli-push-'));
+  const repo = join(base, 'repo');
+  const bare = join(base, 'remote.git');
+
+  try {
+    await mkdir(repo, { recursive: true });
+    await exec('git', ['init', '--bare', bare]);
+    await exec('git', ['init', '-b', 'main', repo]);
+    await git(repo, 'config', 'user.name', 'Test');
+    await git(repo, 'config', 'user.email', 'test@example.com');
+    await writeFile(join(repo, 'README.md'), '# push regression\n');
+    await git(repo, 'add', '-A');
+    await git(repo, 'commit', '-m', 'feat: initial');
+    await git(repo, 'remote', 'add', 'origin', bare);
+    await writeFile(join(repo, '.headbang.json'), JSON.stringify({
+      version: 1,
+      defaultProfile: 'origin-main',
+      profiles: {
+        'origin-main': {
+          remote: 'origin',
+          targetBranch: 'main',
+          history: 'preserve',
+          permissions: { inspect: true, review: true, push: true }
+        }
+      }
+    }, null, 2));
+
+    const cli = join(process.cwd(), 'dist', 'cli.js');
+    const result = await exec(process.execPath, [cli, 'push', 'origin-main', '--json', '--no-banner'], { cwd: repo });
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.success, true);
+    const remoteMain = (await git(repo, 'ls-remote', 'origin', 'refs/heads/main')).stdout.trim();
+    assert.ok(remoteMain);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
