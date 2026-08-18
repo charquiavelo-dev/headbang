@@ -15,7 +15,7 @@ import { deliveryAllowed } from './delivery-policy.js';
 const text = (x: any) => ({ content: [{ type: 'text' as const, text: JSON.stringify(x, null, 2) }] });
 
 function build() {
-  const server = new McpServer({ name: 'headbang', version: '1.1.1' });
+  const server = new McpServer({ name: 'headbang', version: '1.1.2' });
 
   server.registerTool('headbang_status', {
     description: 'Inspect repository status and remotes. Read-only.',
@@ -166,6 +166,6 @@ Then review the changed code for correctness, security, race conditions, error h
 }
 
 const handle = serveStdio(() => build());
-console.error('HEADBANG MCP 1.1.1 listening on stdio 🤘');
+console.error('HEADBANG MCP 1.1.2 listening on stdio 🤘');
 process.on('SIGINT', () => void handle.close());
 process.on('SIGTERM', () => void handle.close());

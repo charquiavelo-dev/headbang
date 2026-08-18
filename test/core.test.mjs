@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 test('package is publishable and Apache-2.0', async () => {
   const p = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(p.name, 'headbang-mcp');
-  assert.equal(p.version, '1.1.1');
+  assert.equal(p.version, '1.1.2');
   assert.equal(p.license, 'Apache-2.0');
   assert.equal(p.private, undefined);
   assert.equal(p.bin.headbang, 'dist/cli.js');

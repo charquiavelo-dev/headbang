@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.1
+## 1.1.2
 
 ### Fixed
 - Restored **push as a first-class CLI/MCP capability** with `headbang push [profile]` and `headbang_push`.
