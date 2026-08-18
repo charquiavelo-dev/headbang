@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "defaultProfile": "github-public",
+  "tasks": {
+    "test": { "command": "npm test", "timeoutMs": 120000 },
+    "build": { "command": "npm run build", "timeoutMs": 120000 }
+  },
+  "profiles": {
+    "codeberg-private": {
+      "remote": "origin",
+      "provider": "forgejo",
+      "targetBranch": "main",
+      "visibility": "private",
+      "history": "preserve",
+      "permissions": { "inspect": true, "review": true, "commit": true, "push": true, "forcePush": false },
+      "review": { "tasks": ["test", "build"] },
+      "branch": { "strategy": "git-flow", "main": "main", "develop": "develop" },
+      "requireConventionalCommits": true
+    },
+    "github-public": {
+      "remote": "github",
+      "provider": "github",
+      "targetBranch": "main",
+      "visibility": "public",
+      "history": "snapshot",
+      "permissions": { "inspect": true, "review": true, "push": true, "forcePush": true },
+      "projection": {
+        "include": ["src/**", "public/**", "package.json", "README.md", "LICENSE"],
+        "exclude": ["docs/internal/**", ".agents/**", "_bmad/**", "**/*.secret.*"]
+      },
+      "review": { "tasks": ["test", "build"] },
+      "preDelivery": ["test", "build"],
+      "requireClean": true
+    },
+    "gitlab-backend": {
+      "remote": "gitlab",
+      "provider": "gitlab",
+      "targetBranch": "main",
+      "visibility": "private",
+      "history": "snapshot",
+      "permissions": { "inspect": true, "review": true, "push": true, "forcePush": true },
+      "projection": {
+        "include": ["backend/**", "packages/shared/**"],
+        "map": [{ "from": "backend", "to": "" }]
+      }
+    }
+  }
+}

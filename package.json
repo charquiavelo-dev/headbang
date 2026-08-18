@@ -1,0 +1,32 @@
+{
+  "name": "headbang",
+  "version": "1.0.0",
+  "description": "Policy-driven Git workflows for humans and AI agents. Review, commit, project and deliver safely to multiple remotes.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Carlos Blanco",
+  "keywords": ["git","mcp","model-context-protocol","code-review","conventional-commits","git-flow","github","gitlab","bitbucket","codeberg","forgejo","developer-tools","cli"],
+  "engines": {"node": ">=20"},
+  "bin": {"headbang": "dist/cli.js", "headbang-mcp": "dist/mcp.js"},
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
+  "files": ["dist","README.md","LICENSE","NOTICE","SECURITY.md","CHANGELOG.md","docs","examples"],
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && npm test",
+    "prepack": "npm run check",
+    "pack:dry": "npm pack --dry-run",
+    "start": "node dist/cli.js",
+    "mcp": "node dist/mcp.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "publishConfig": {"access": "public"}
+}

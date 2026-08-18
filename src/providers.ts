@@ -1,0 +1,3 @@
+import type { Provider } from './types.js';
+export function detectProvider(url:string):Provider{ const u=url.toLowerCase(); if(u.includes('github.com'))return'github'; if(u.includes('gitlab.com')||u.includes('/gitlab/'))return'gitlab'; if(u.includes('bitbucket.org'))return'bitbucket'; if(u.includes('codeberg.org')||u.includes('forgejo'))return'forgejo'; return'generic'; }
+export function providerCapabilities(provider:Provider){ return {provider,gitTransport:true,pullRequests:provider!=='generic',reviews:provider!=='generic',releases:provider!=='generic',note:'Forge API operations are capability metadata in v1; Git transport/delivery is fully provider-independent.'}; }

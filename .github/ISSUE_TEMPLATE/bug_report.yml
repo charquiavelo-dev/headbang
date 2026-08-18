@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible HEADBANG problem
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Minimal sanitized configuration
+      description: Never paste tokens, credentials, customer data, or private repository URLs.
+      render: json
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: HEADBANG version
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Node / Git / OS

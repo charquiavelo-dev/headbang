@@ -1,0 +1,1 @@
+import { currentBranch,currentCommit,isClean,remotes,repoRoot } from '../git/git.js'; export async function status(repo:string){const root=await repoRoot(repo);return {root,branch:await currentBranch(root),commit:await currentCommit(root),clean:await isClean(root),remotes:await remotes(root)}}
