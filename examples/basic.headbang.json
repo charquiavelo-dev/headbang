@@ -1,47 +1,145 @@
 {
   "version": 1,
-  "defaultProfile": "github-public",
+  "defaultProfile": "codeberg-private",
   "tasks": {
-    "test": { "command": "npm test", "timeoutMs": 120000 },
-    "build": { "command": "npm run build", "timeoutMs": 120000 }
+    "test": {
+      "command": "npm test",
+      "timeoutMs": 120000
+    },
+    "build": {
+      "command": "npm run build",
+      "timeoutMs": 120000
+    }
   },
   "profiles": {
     "codeberg-private": {
       "remote": "origin",
       "provider": "forgejo",
-      "targetBranch": "main",
+      "sourceRef": "develop",
+      "targetBranch": "daily",
       "visibility": "private",
       "history": "preserve",
-      "permissions": { "inspect": true, "review": true, "commit": true, "push": true, "forcePush": false },
-      "review": { "tasks": ["test", "build"] },
-      "branch": { "strategy": "git-flow", "main": "main", "develop": "develop" },
+      "permissions": {
+        "inspect": true,
+        "review": true,
+        "commit": true,
+        "push": true,
+        "forcePush": false,
+        "flow": true
+      },
+      "review": {
+        "tasks": [
+          "test",
+          "build"
+        ]
+      },
+      "branch": {
+        "strategy": "git-flow",
+        "main": "main",
+        "develop": "develop"
+      },
+      "delivery": {
+        "allowOn": [
+          "manual",
+          "feature-finish",
+          "release-finish",
+          "hotfix-finish"
+        ],
+        "autoOn": [
+          "feature-finish"
+        ]
+      },
       "requireConventionalCommits": true
+    },
+    "codeberg-stable": {
+      "remote": "origin",
+      "provider": "forgejo",
+      "sourceRef": "main",
+      "targetBranch": "stable",
+      "visibility": "private",
+      "history": "preserve",
+      "permissions": {
+        "inspect": true,
+        "review": true,
+        "push": true,
+        "forcePush": false
+      },
+      "delivery": {
+        "allowOn": [
+          "release-finish",
+          "hotfix-finish"
+        ],
+        "autoOn": [
+          "release-finish",
+          "hotfix-finish"
+        ],
+        "requireTag": true
+      }
     },
     "github-public": {
       "remote": "github",
       "provider": "github",
+      "sourceRef": "main",
       "targetBranch": "main",
       "visibility": "public",
       "history": "snapshot",
-      "permissions": { "inspect": true, "review": true, "push": true, "forcePush": true },
-      "projection": {
-        "include": ["src/**", "public/**", "package.json", "README.md", "LICENSE"],
-        "exclude": ["docs/internal/**", ".agents/**", "_bmad/**", "**/*.secret.*"]
+      "permissions": {
+        "inspect": true,
+        "review": true,
+        "push": true,
+        "forcePush": true
       },
-      "review": { "tasks": ["test", "build"] },
-      "preDelivery": ["test", "build"],
+      "projection": {
+        "include": [
+          "src/**",
+          "public/**",
+          "package.json",
+          "README.md",
+          "LICENSE"
+        ],
+        "exclude": [
+          "docs/internal/**",
+          ".agents/**",
+          "_bmad/**",
+          "**/*.secret.*"
+        ]
+      },
+      "review": {
+        "tasks": [
+          "test",
+          "build"
+        ]
+      },
+      "preDelivery": [
+        "test",
+        "build"
+      ],
       "requireClean": true
     },
     "gitlab-backend": {
       "remote": "gitlab",
       "provider": "gitlab",
+      "sourceRef": "main",
       "targetBranch": "main",
       "visibility": "private",
       "history": "snapshot",
-      "permissions": { "inspect": true, "review": true, "push": true, "forcePush": true },
+      "permissions": {
+        "inspect": true,
+        "review": true,
+        "push": true,
+        "forcePush": true
+      },
       "projection": {
-        "include": ["backend/**", "packages/shared/**"],
-        "map": [{ "from": "backend", "to": "" }]
+        "include": [
+          "backend/**",
+          "packages/shared/**"
+        ],
+        "map": [
+          {
+            "from": "backend",
+            "to": ""
+          }
+        ]
       }
     }
   }

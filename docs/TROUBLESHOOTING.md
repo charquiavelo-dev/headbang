@@ -24,6 +24,27 @@ Read every reported file and line. Remove the secret from the source or projecti
 
 Someone or something changed the target branch after HEADBANG observed its SHA. This is intentional protection. Fetch/inspect the destination, run preview again and decide whether replacing the new remote state is still correct.
 
+
+## `Profile is not eligible for 'manual'`
+
+The profile has an event-aware delivery policy and intentionally does not allow direct/manual publishing. This is common for `stable` or emergency mirrors that should only change after `release-finish` or `hotfix-finish`. Do not bypass the policy by changing the event; use the configured Git Flow lifecycle.
+
+## `Profile requires a tagged delivery`
+
+The profile sets `delivery.requireTag: true`, but the current lifecycle event has no tag. Release finishes always use a SemVer version and create a tag. Hotfixes create a tag only when their name is SemVer-shaped.
+
+## `Git Flow mutation is disabled`
+
+Set `permissions.flow: true` only on the profile that is allowed to create/merge/tag/delete Git Flow lifecycle branches. HEADBANG deliberately requires explicit permission.
+
+## Git Flow merge conflict
+
+HEADBANG never auto-resolves source conflicts. A failed multi-step finish aborts the active merge, removes a tag created during the failed transaction, restores the original `main`/`develop` SHAs, and returns to the lifecycle branch. Resolve the underlying conflict deliberately and run the finish operation again.
+
+## Automatic delivery failed after Git Flow completed
+
+Local Git Flow and remote delivery are separate safety boundaries. If the local feature/release/hotfix finish succeeded but an `autoOn` profile failed to push, HEADBANG reports that clearly and does not attempt a blind remote rollback. Fix authentication/policy/remote state and retry the appropriate delivery deliberately.
+
 ## Quality gate timed out
 
 Increase the task's `timeoutMs` or fix the command. Keep long-running dev servers out of gates; gates must terminate.

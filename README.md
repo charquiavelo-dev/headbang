@@ -344,7 +344,7 @@ If `provider` is omitted, common hosted URLs are detected automatically. Explici
 
 ## Branch strategies
 
-HEADBANG validates branch strategy during review instead of forcing every repository into one branching religion.
+HEADBANG supports Git Flow, GitHub Flow, trunk-based, and custom branch policies. Since 1.1, Git Flow is a **native lifecycle**, not only branch-name validation. No separate `git-flow` installation is required.
 
 ### Git Flow
 
@@ -354,11 +354,84 @@ HEADBANG validates branch strategy during review instead of forcing every reposi
     "strategy": "git-flow",
     "main": "main",
     "develop": "develop"
+  },
+  "permissions": {
+    "flow": true
   }
 }
 ```
 
-Recognized working branches include `feature/*`, `release/*`, and `hotfix/*` in addition to main/develop.
+Inspect the lifecycle:
+
+```bash
+headbang flow status
+```
+
+Features start from and finish into `develop`:
+
+```bash
+headbang feature start order-flow
+# work + Conventional Commits
+headbang feature finish order-flow
+```
+
+Releases start from `develop` and finish by merging to `main`, creating an annotated tag, and merging back to `develop`:
+
+```bash
+headbang release start 1.1.0
+headbang release finish 1.1.0
+```
+
+Hotfixes start from `main` and finish into both `main` and `develop`:
+
+```bash
+headbang hotfix start 1.1.1
+headbang hotfix finish 1.1.1
+```
+
+Every mutating Git Flow command requires a clean working tree and `permissions.flow: true`. Finish operations run HEADBANG review/quality gates before merging. Merge conflicts are surfaced and never auto-resolved. By default finished branches are deleted; pass `--keep-branch` in the CLI to retain them.
+
+See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the complete lifecycle, custom prefixes and safety behavior.
+
+
+### Event-driven delivery and stable branches
+
+Profiles can publish from a specific source ref and can be restricted to Git Flow events. This supports patterns such as a daily development branch plus a stable/emergency branch in the **same remote repository**:
+
+```json
+{
+  "profiles": {
+    "daily": {
+      "remote": "origin",
+      "sourceRef": "develop",
+      "targetBranch": "daily",
+      "history": "preserve",
+      "permissions": { "inspect": true, "review": true, "push": true },
+      "delivery": {
+        "allowOn": ["manual", "feature-finish", "release-finish", "hotfix-finish"],
+        "autoOn": ["feature-finish"]
+      }
+    },
+    "stable": {
+      "remote": "origin",
+      "sourceRef": "main",
+      "targetBranch": "stable",
+      "history": "preserve",
+      "permissions": { "inspect": true, "review": true, "push": true },
+      "delivery": {
+        "allowOn": ["release-finish", "hotfix-finish"],
+        "autoOn": ["release-finish", "hotfix-finish"],
+        "requireTag": true
+      }
+    }
+  }
+}
+```
+
+`headbang deliver stable` is blocked because direct delivery is a `manual` event. A successful tagged `release finish` or `hotfix finish` automatically publishes `main` to `origin/stable`. `daily` can keep receiving development work independently.
+
+The same model works across GitHub, GitLab, Bitbucket, Codeberg/Forgejo, generic Git servers, or multiple branches on one remote. Each profile can still have its own projection, visibility, safety and history rules.
+
 
 ### GitHub Flow
 
@@ -455,7 +528,8 @@ A profile may deny capabilities even when your credentials would technically all
     "forcePush": false,
     "createPr": false,
     "mergePr": false,
-    "release": false
+    "release": false,
+    "flow": false
   }
 }
 ```

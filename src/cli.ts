@@ -9,6 +9,8 @@ import { commit } from './commands/commit.js';
 import { releaseInspect } from './commands/release.js';
 import { remoteUrl } from './git/git.js';
 import { detectProvider, providerCapabilities } from './providers.js';
+import { gitFlowStatus, type GitFlowKind } from './workflow.js';
+import { finishFlow, startFlow } from './flow-orchestrator.js';
 
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((x) => x.startsWith('--')));
@@ -16,6 +18,11 @@ const vals = argv.filter((x) => !x.startsWith('--'));
 const command = vals[0] ?? 'help';
 const repo = process.cwd();
 const json = flags.has('--json');
+
+function flagValue(name: string) {
+  const hit = argv.find((x) => x.startsWith(`--${name}=`));
+  return hit?.slice(name.length + 3);
+}
 
 function out(value: unknown) {
   if (json) console.log(JSON.stringify(value, null, 2));
@@ -32,16 +39,30 @@ ${c.bold('Core')}
   doctor                    Validate Git + HEADBANG configuration
   review [profile]          Run deterministic review + quality gates
   commit <message> [--all]  Conventional Commit with optional staging
-  preview [profile]         Show exactly what delivery would do
+  preview [profile]         Show exactly what manual delivery would do
   deliver [profile]         Deliver according to profile policy
   profiles                  List configured delivery profiles
   providers [profile]       Detect forge and capabilities
   release <version>         Recommend next SemVer from commits
 
+${c.bold('Git Flow')}
+  flow status               Show Git Flow state
+  feature start <name>      Create feature/<name> from develop
+  feature finish <name>     Review + merge feature into develop
+  release start <version>   Create release/<version> from develop
+  release finish <version>  Review + merge to main, tag, merge back
+  hotfix start <name>       Create hotfix/<name> from main
+  hotfix finish <name>      Review + merge to main and develop
+
+  Git Flow uses ordinary Git; no separate git-flow installation is required.
+  Profiles can auto-deliver on feature/release/hotfix lifecycle events.
+
 ${c.bold('Safety')}
-  --dry-run   Never mutate a remote
-  --json      Machine-readable output
-  --no-banner Hide the wordmark
+  --dry-run          Never mutate a remote
+  --json             Machine-readable output
+  --no-banner        Hide the wordmark
+  --profile=<name>   Select profile for Git Flow commands
+  --keep-branch      Do not delete a finished Git Flow branch
 
 ${c.bold('MCP')}
   headbang mcp              Start the stdio MCP server
@@ -49,6 +70,37 @@ ${c.bold('MCP')}
 
 Config: .headbang.json (repo) + ~/.config/headbang/config.json (global)
 Docs: README.md and docs/`);
+}
+
+async function flowCommand(kind?: GitFlowKind) {
+  const cfg = await loadConfig(repo);
+  const explicit = flagValue('profile');
+  const [profileName, profile] = getProfile(cfg, explicit);
+  const action = vals[1];
+
+  if (!kind) {
+    if (action !== 'status') throw new Error('Use: headbang flow status [--profile=<name>]');
+    return out({ profile: profileName, ...(await gitFlowStatus(repo, profile)) });
+  }
+
+  if (action !== 'start' && action !== 'finish') {
+    throw new Error(`Use: headbang ${kind} start <name> or headbang ${kind} finish <name>`);
+  }
+
+  const name = vals[2];
+  if (!name) throw new Error(`${kind} ${action} requires a name/version.`);
+
+  if (action === 'start') {
+    return out({ profile: profileName, ...(await startFlow(repo, kind, name, profile, cfg)) });
+  }
+
+  return out({
+    profile: profileName,
+    ...(await finishFlow(repo, kind, name, profile, cfg, {
+      review: true,
+      deleteBranch: !flags.has('--keep-branch')
+    }))
+  });
 }
 
 async function main() {
@@ -66,7 +118,14 @@ async function main() {
       const s = await status(repo);
       try {
         const cfg = await loadConfig(s.root);
-        return out({ ok: true, git: true, config: true, node: process.version, profiles: Object.keys(cfg.profiles), ...s });
+        return out({
+          ok: true,
+          git: true,
+          config: true,
+          node: process.version,
+          profiles: Object.keys(cfg.profiles),
+          ...s
+        });
       } catch (error: any) {
         return out({ ok: false, git: true, config: false, error: error.message });
       }
@@ -78,19 +137,30 @@ async function main() {
       return out(await commit(repo, message, flags.has('--all')));
     }
 
+    if (command === 'flow') return flowCommand();
+    if (command === 'feature') return flowCommand('feature');
+    if (command === 'hotfix') return flowCommand('hotfix');
+    if (command === 'release' && (vals[1] === 'start' || vals[1] === 'finish')) return flowCommand('release');
+
     const cfg = await loadConfig(repo);
+
     if (command === 'profiles') {
-      return out(Object.entries(cfg.profiles).map(([name, p]) => ({
+      return out(Object.entries(cfg.profiles).map(([name, profile]) => ({
         name,
-        remote: p.remote,
-        targetBranch: p.targetBranch ?? 'current',
-        visibility: p.visibility ?? 'private',
-        history: p.history ?? (p.projection ? 'snapshot' : 'preserve')
+        remote: profile.remote,
+        sourceRef: profile.sourceRef ?? 'HEAD',
+        targetBranch: profile.targetBranch ?? 'current',
+        visibility: profile.visibility ?? 'private',
+        history: profile.history ?? (profile.projection ? 'snapshot' : 'preserve'),
+        strategy: profile.branch?.strategy ?? 'custom',
+        flowEnabled: profile.permissions?.flow === true,
+        allowOn: profile.delivery?.allowOn ?? null,
+        autoOn: profile.delivery?.autoOn ?? []
       })));
     }
 
     if (command === 'release') {
-      const version = vals[1];
+      const version = vals[1] === 'inspect' ? vals[2] : vals[1];
       if (!version) throw new Error('Current version is required, e.g. headbang release 1.4.2');
       const rules = cfg.defaultProfile ? getProfile(cfg)[1].release?.rules ?? {} : {};
       return out(await releaseInspect(repo, version, rules));
@@ -105,6 +175,7 @@ async function main() {
       const provider = profile.provider ?? detectProvider(url);
       return out({ url, ...providerCapabilities(provider) });
     }
+
     help();
   } catch (error: any) {
     console.error(`${c.red(icons.fail)} ${c.red(error?.message ?? String(error))}`);
