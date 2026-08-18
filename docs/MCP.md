@@ -87,3 +87,8 @@ Finish release 1.1.0 with HEADBANG.
 ```
 
 The finish operation merges to `main`, creates the configured tag, merges back to `develop`, removes the release branch, and can automatically deliver stable/release-only profiles using `main` as their source.
+
+
+## `headbang_push`
+
+Primary MCP push tool. Pushes a single configured profile or, with `all=true`, every manually eligible profile. It defaults to `dryRun=true`. Stable/release-only profiles remain protected by delivery event policy. `headbang_deliver` remains available as an advanced compatible alias.

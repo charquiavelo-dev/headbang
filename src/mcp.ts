@@ -10,11 +10,12 @@ import { commit } from './commands/commit.js';
 import { releaseInspect } from './commands/release.js';
 import { gitFlowStatus } from './workflow.js';
 import { finishFlow, startFlow } from './flow-orchestrator.js';
+import { deliveryAllowed } from './delivery-policy.js';
 
 const text = (x: any) => ({ content: [{ type: 'text' as const, text: JSON.stringify(x, null, 2) }] });
 
 function build() {
-  const server = new McpServer({ name: 'headbang', version: '1.1.0' });
+  const server = new McpServer({ name: 'headbang', version: '1.1.1' });
 
   server.registerTool('headbang_status', {
     description: 'Inspect repository status and remotes. Read-only.',
@@ -37,6 +38,37 @@ function build() {
     const config = await loadConfig(repo);
     const [name, selected] = getProfile(config, profile);
     return text(await previewDelivery(repo, name, selected, config));
+  });
+
+  server.registerTool('headbang_push', {
+    description: 'Primary HEADBANG push tool. Push one profile, or every manually eligible profile with all=true. Uses the same projections, safety checks and policies as delivery. Defaults to dryRun=true.',
+    inputSchema: z.object({
+      repo: z.string().default('.'),
+      profile: z.string().optional(),
+      all: z.boolean().default(false),
+      dryRun: z.boolean().default(true)
+    })
+  }, async ({ repo, profile, all, dryRun }) => {
+    const config = await loadConfig(repo);
+    if (!all) {
+      const [name, selected] = getProfile(config, profile);
+      return text(await deliver(repo, name, selected, config, { dryRun }));
+    }
+
+    const results = [];
+    for (const [name, selected] of Object.entries(config.profiles)) {
+      const policy = deliveryAllowed(selected, { event: 'manual', tag: null });
+      if (!policy.allowed) {
+        results.push({ profile: name, skipped: true, reason: policy.reason });
+        continue;
+      }
+      try {
+        results.push({ profile: name, success: true, result: await deliver(repo, name, selected, config, { dryRun }) });
+      } catch (error: any) {
+        results.push({ profile: name, success: false, error: error?.message ?? String(error) });
+      }
+    }
+    return text({ command: 'push', all: true, dryRun, results });
   });
 
   server.registerTool('headbang_deliver', {
@@ -134,6 +166,6 @@ Then review the changed code for correctness, security, race conditions, error h
 }
 
 const handle = serveStdio(() => build());
-console.error('HEADBANG MCP 1.1.0 listening on stdio 🤘');
+console.error('HEADBANG MCP 1.1.1 listening on stdio 🤘');
 process.on('SIGINT', () => void handle.close());
 process.on('SIGTERM', () => void handle.close());

@@ -184,3 +184,10 @@ Git Flow merge commits created by HEADBANG use Conventional Commit-compatible su
 ## SemVer-lite
 
 `headbang release 1.4.2` inspects commit messages since the most recent tag. Breaking changes recommend major, `feat` recommends minor, and `fix`/`perf` recommend patch. Other types default to no release unless profile rules override them. It recommends only; HEADBANG does not publish npm packages automatically.
+
+
+## Manual push compatibility
+
+`headbang push [profile]` is the primary manual push command. It executes the profile's normal HEADBANG pipeline: review gates, projection rules, safety scanning and the configured Git remote/branch. `headbang deliver [profile]` remains supported as an advanced alias.
+
+`headbang push --all` attempts every profile eligible for the `manual` event and reports release-only profiles as skipped.

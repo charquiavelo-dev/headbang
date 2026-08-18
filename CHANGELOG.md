@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1
+
+### Fixed
+- Restored **push as a first-class CLI/MCP capability** with `headbang push [profile]` and `headbang_push`.
+- Added `headbang push --all` / MCP `all=true` for multi-profile manual pushes while safely skipping release-only profiles.
+- Preserved `headbang deliver` / `headbang_deliver` as compatible advanced aliases.
+- Added an end-to-end regression test that invokes the real CLI and verifies a remote branch is created.
+
+
 All notable changes to HEADBANG are documented here. The project follows Semantic Versioning and Conventional Commits.
 
 ## 1.1.0 - 2026-08-17

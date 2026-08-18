@@ -4,6 +4,7 @@ import { c, icons } from './ui/theme.js';
 import { status } from './commands/status.js';
 import { loadConfig, getProfile } from './config/load.js';
 import { previewDelivery, deliver } from './delivery.js';
+import { deliveryAllowed } from './delivery-policy.js';
 import { reviewRepo } from './review/reviewer.js';
 import { commit } from './commands/commit.js';
 import { releaseInspect } from './commands/release.js';
@@ -39,8 +40,10 @@ ${c.bold('Core')}
   doctor                    Validate Git + HEADBANG configuration
   review [profile]          Run deterministic review + quality gates
   commit <message> [--all]  Conventional Commit with optional staging
+  push [profile]            Push using the selected profile (primary command)
+  push --all                Push every manually eligible profile
   preview [profile]         Show exactly what manual delivery would do
-  deliver [profile]         Deliver according to profile policy
+  deliver [profile]         Advanced alias for policy-driven push/delivery
   profiles                  List configured delivery profiles
   providers [profile]       Detect forge and capabilities
   release <version>         Recommend next SemVer from commits
@@ -103,6 +106,31 @@ async function flowCommand(kind?: GitFlowKind) {
   });
 }
 
+async function pushCommand() {
+  const cfg = await loadConfig(repo);
+  const dryRun = flags.has('--dry-run');
+
+  if (flags.has('--all')) {
+    const results = [];
+    for (const [name, profile] of Object.entries(cfg.profiles)) {
+      const policy = deliveryAllowed(profile, { event: 'manual', tag: null });
+      if (!policy.allowed) {
+        results.push({ profile: name, skipped: true, reason: policy.reason });
+        continue;
+      }
+      try {
+        results.push({ profile: name, success: true, result: await deliver(repo, name, profile, cfg, { dryRun }) });
+      } catch (error: any) {
+        results.push({ profile: name, success: false, error: error?.message ?? String(error) });
+      }
+    }
+    return out({ command: 'push', all: true, dryRun, results });
+  }
+
+  const [name, profile] = getProfile(cfg, vals[1] ?? flagValue('profile'));
+  return out(await deliver(repo, name, profile, cfg, { dryRun }));
+}
+
 async function main() {
   try {
     if (command === 'mcp') {
@@ -137,6 +165,7 @@ async function main() {
       return out(await commit(repo, message, flags.has('--all')));
     }
 
+    if (command === 'push') return pushCommand();
     if (command === 'flow') return flowCommand();
     if (command === 'feature') return flowCommand('feature');
     if (command === 'hotfix') return flowCommand('hotfix');

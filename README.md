@@ -17,6 +17,8 @@ HEADBANG sits between your working repository and the places you publish code. I
 
 HEADBANG is both a normal CLI and an MCP server. You can use it yourself from a terminal or expose the same guarded workflow to Claude, Codex, OpenCode, an IDE, or any MCP-capable client.
 
+> **Push is first-class in 1.1.1.** `headbang push [profile]` is the primary command for sending a profile to its remote. `headbang deliver [profile]` remains available as an advanced alias. Existing profiles remain manually pushable unless they explicitly restrict the `manual` event with `delivery.allowOn`.
+
 ## Why HEADBANG exists
 
 A `.gitignore` answers **what should not enter this repository**. It does not answer **what subset of this repository is allowed to leave for a particular destination**.
@@ -52,7 +54,7 @@ npm install -g headbang-mcp
 Or run without a global install:
 
 ```bash
-npx --package=headbang-mcp headbang status
+npx headbang status
 ```
 
 For a project dependency:
@@ -657,3 +659,15 @@ HEADBANG is open source under the **Apache License 2.0**. You may use, modify an
 ## Contributing
 
 Issues and pull requests are welcome. Keep contributions focused, include tests for behavior changes, use Conventional Commits, and avoid introducing runtime dependencies when the Node.js standard library can solve the problem cleanly.
+
+
+## Push commands
+
+```bash
+headbang push github-public
+headbang push codeberg-private
+headbang push --all
+headbang push github-public --dry-run
+```
+
+`push` is the primary user-facing command. It executes the configured profile, including projection, safety checks, target branch and remote. `deliver` remains an advanced compatible alias. `push --all` skips profiles that explicitly forbid manual delivery (for example release-only stable mirrors).
