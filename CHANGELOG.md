@@ -1,6 +1,18 @@
 # Changelog
 
-## 1.1.2
+## 1.1.3
+
+### Fixed
+
+- `headbang push --all` no longer reports a misleading successful empty result when no delivery profiles are configured. It now fails clearly, lists detected Git remotes, and explains that remotes are not automatically treated as profiles because projections and safety policies may differ.
+- `headbang push <name>` now detects when `<name>` is only a Git remote and explains that a HEADBANG profile must be configured instead of silently bypassing policy.
+- Human CLI output is now rendered as readable status summaries, delivery results, review findings, Git Flow results, release analysis, and profile summaries. Raw JSON is emitted only with `--json`.
+
+### Safety
+
+- HEADBANG deliberately does not auto-push unprofiled remotes. This prevents a public remote from accidentally receiving the full private repository when it was supposed to use a filtered projection.
+
+## 1.1.1
 
 ### Fixed
 - Restored **push as a first-class CLI/MCP capability** with `headbang push [profile]` and `headbang_push`.

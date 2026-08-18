@@ -12,6 +12,7 @@ import { remoteUrl } from './git/git.js';
 import { detectProvider, providerCapabilities } from './providers.js';
 import { gitFlowStatus, type GitFlowKind } from './workflow.js';
 import { finishFlow, startFlow } from './flow-orchestrator.js';
+import { renderDelivery, renderDoctor, renderFlow, renderGeneric, renderProfiles, renderPushAll, renderRelease, renderReview, renderStatus } from './ui/render.js';
 
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((x) => x.startsWith('--')));
@@ -25,10 +26,11 @@ function flagValue(name: string) {
   return hit?.slice(name.length + 3);
 }
 
-function out(value: unknown) {
+function out(value: unknown, renderer: (value: any) => void = renderGeneric) {
   if (json) console.log(JSON.stringify(value, null, 2));
-  else console.log(value);
+  else renderer(value);
 }
+
 
 function help() {
   printWordmark();
@@ -83,7 +85,7 @@ async function flowCommand(kind?: GitFlowKind) {
 
   if (!kind) {
     if (action !== 'status') throw new Error('Use: headbang flow status [--profile=<name>]');
-    return out({ profile: profileName, ...(await gitFlowStatus(repo, profile)) });
+    return out({ profile: profileName, ...(await gitFlowStatus(repo, profile)) }, renderFlow);
   }
 
   if (action !== 'start' && action !== 'finish') {
@@ -94,7 +96,7 @@ async function flowCommand(kind?: GitFlowKind) {
   if (!name) throw new Error(`${kind} ${action} requires a name/version.`);
 
   if (action === 'start') {
-    return out({ profile: profileName, ...(await startFlow(repo, kind, name, profile, cfg)) });
+    return out({ profile: profileName, ...(await startFlow(repo, kind, name, profile, cfg)) }, renderFlow);
   }
 
   return out({
@@ -103,7 +105,7 @@ async function flowCommand(kind?: GitFlowKind) {
       review: true,
       deleteBranch: !flags.has('--keep-branch')
     }))
-  });
+  }, renderFlow);
 }
 
 async function pushCommand() {
@@ -111,8 +113,21 @@ async function pushCommand() {
   const dryRun = flags.has('--dry-run');
 
   if (flags.has('--all')) {
+    const configured = Object.entries(cfg.profiles);
+    if (!configured.length) {
+      const s = await status(repo);
+      const names = [...new Set((s.remotes ?? []).map((raw: string) => raw.split('\t')[0]).filter(Boolean))];
+      const error = new Error(
+        `No HEADBANG delivery profiles are configured. Git remotes are not automatically treated as delivery profiles because each remote may require different projections, exclusions or release policies.\n` +
+        (names.length ? `Detected Git remotes: ${names.join(', ')}.\n` : '') +
+        `Create .headbang.json profiles for the remotes you want HEADBANG to push. Run 'headbang status' to inspect remotes and 'headbang profiles' to inspect configured profiles.`
+      );
+      (error as any).code = 'NO_PROFILES';
+      throw error;
+    }
+
     const results = [];
-    for (const [name, profile] of Object.entries(cfg.profiles)) {
+    for (const [name, profile] of configured) {
       const policy = deliveryAllowed(profile, { event: 'manual', tag: null });
       if (!policy.allowed) {
         results.push({ profile: name, skipped: true, reason: policy.reason });
@@ -124,11 +139,25 @@ async function pushCommand() {
         results.push({ profile: name, success: false, error: error?.message ?? String(error) });
       }
     }
-    return out({ command: 'push', all: true, dryRun, results });
+    const result = { command: 'push', all: true, dryRun, results };
+    if (results.some((x: any) => x.success === false)) process.exitCode = 1;
+    return out(result, renderPushAll);
   }
 
-  const [name, profile] = getProfile(cfg, vals[1] ?? flagValue('profile'));
-  return out(await deliver(repo, name, profile, cfg, { dryRun }));
+  const requested = vals[1] ?? flagValue('profile');
+  try {
+    const [name, profile] = getProfile(cfg, requested);
+    return out(await deliver(repo, name, profile, cfg, { dryRun }), renderDelivery);
+  } catch (error: any) {
+    if (requested) {
+      const s = await status(repo);
+      const remoteNames = [...new Set((s.remotes ?? []).map((raw: string) => raw.split('\t')[0]).filter(Boolean))];
+      if (remoteNames.includes(requested) && !cfg.profiles[requested]) {
+        throw new Error(`'${requested}' is a Git remote, but no HEADBANG profile named '${requested}' exists. HEADBANG will not bypass delivery policy and push the full repository implicitly. Add a '${requested}' profile to .headbang.json first.`);
+      }
+    }
+    throw error;
+  }
 }
 
 async function main() {
@@ -140,7 +169,7 @@ async function main() {
 
     if (!json && !flags.has('--no-banner') && command !== 'help') printWordmark();
     if (command === 'help' || flags.has('--help')) return help();
-    if (command === 'status') return out(await status(repo));
+    if (command === 'status') return out(await status(repo), renderStatus);
 
     if (command === 'doctor') {
       const s = await status(repo);
@@ -153,9 +182,9 @@ async function main() {
           node: process.version,
           profiles: Object.keys(cfg.profiles),
           ...s
-        });
+        }, renderDoctor);
       } catch (error: any) {
-        return out({ ok: false, git: true, config: false, error: error.message });
+        return out({ ok: false, git: true, config: false, error: error.message }, renderDoctor);
       }
     }
 
@@ -185,20 +214,20 @@ async function main() {
         flowEnabled: profile.permissions?.flow === true,
         allowOn: profile.delivery?.allowOn ?? null,
         autoOn: profile.delivery?.autoOn ?? []
-      })));
+      })), renderProfiles);
     }
 
     if (command === 'release') {
       const version = vals[1] === 'inspect' ? vals[2] : vals[1];
       if (!version) throw new Error('Current version is required, e.g. headbang release 1.4.2');
       const rules = cfg.defaultProfile ? getProfile(cfg)[1].release?.rules ?? {} : {};
-      return out(await releaseInspect(repo, version, rules));
+      return out(await releaseInspect(repo, version, rules), renderRelease);
     }
 
     const [name, profile] = getProfile(cfg, vals[1]);
-    if (command === 'review') return out({ profile: name, ...(await reviewRepo(repo, profile, cfg)) });
-    if (command === 'preview') return out(await previewDelivery(repo, name, profile, cfg));
-    if (command === 'deliver') return out(await deliver(repo, name, profile, cfg, { dryRun: flags.has('--dry-run') }));
+    if (command === 'review') return out({ profile: name, ...(await reviewRepo(repo, profile, cfg)) }, renderReview);
+    if (command === 'preview') return out(await previewDelivery(repo, name, profile, cfg), renderDelivery);
+    if (command === 'deliver') return out(await deliver(repo, name, profile, cfg, { dryRun: flags.has('--dry-run') }), renderDelivery);
     if (command === 'providers') {
       const url = await remoteUrl(repo, profile.remote);
       const provider = profile.provider ?? detectProvider(url);

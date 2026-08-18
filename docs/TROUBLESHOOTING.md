@@ -56,3 +56,34 @@ Build/install HEADBANG and verify `headbang-mcp` is on PATH. With a local checko
 ## Windows notes
 
 npm creates `.cmd` shims for package `bin` entries. Use forward slashes in HEADBANG projection patterns even when repository paths are on Windows. Git commands themselves are spawned without a shell; only explicitly declared tasks use the platform shell.
+
+## `headbang push --all` says no profiles are configured
+
+`git remote -v` and `headbang status` show Git remotes. `headbang push --all` operates on **HEADBANG delivery profiles**, not raw remotes.
+
+This distinction is a safety feature. A remote named `github` may require a public projection while `origin` may receive the complete private repository. Automatically treating both remotes as equivalent could publish excluded files.
+
+Check configured profiles:
+
+```bash
+headbang profiles
+```
+
+If none exist, create `.headbang.json` and map each destination explicitly. After configuration:
+
+```bash
+headbang preview github-public
+headbang push github-public --dry-run
+headbang push --all
+```
+
+If you truly want an unrestricted raw Git push, use Git directly. HEADBANG does not silently bypass missing policy.
+
+## Why does normal CLI output no longer show JavaScript objects?
+
+Starting with 1.1.2, human terminal output is rendered as readable sections and summaries. JSON is opt-in:
+
+```bash
+headbang status --json
+headbang push --all --json
+```

@@ -126,6 +126,66 @@ When the preview is correct:
 headbang deliver github-public
 ```
 
+## Git remotes are not delivery profiles
+
+HEADBANG intentionally distinguishes a Git remote from a delivery profile. A remote only answers **where** Git can push. A HEADBANG profile also answers **what is allowed to leave the repository**, **which branch receives it**, **whether history is preserved or projected**, and **when delivery is permitted**.
+
+For example, this repository may have two Git remotes:
+
+```text
+github  https://github.com/acme/project.git
+origin  https://codeberg.org/acme/project.git
+```
+
+That does **not** mean `headbang push --all` may safely send the complete repository to both. GitHub might be a public filtered projection while Codeberg might be the complete private mirror. Configure both explicitly:
+
+```json
+{
+  "version": 1,
+  "profiles": {
+    "github-public": {
+      "remote": "github",
+      "targetBranch": "main",
+      "visibility": "public",
+      "history": "snapshot",
+      "permissions": { "inspect": true, "push": true, "forcePush": true },
+      "projection": {
+        "include": ["src/**", "package.json", "README.md", "LICENSE"],
+        "exclude": ["docs/internal/**", ".agents/**", ".env*"]
+      }
+    },
+    "codeberg-private": {
+      "remote": "origin",
+      "targetBranch": "main",
+      "visibility": "private",
+      "history": "preserve",
+      "permissions": { "inspect": true, "push": true }
+    }
+  }
+}
+```
+
+Now:
+
+```bash
+headbang push --all
+```
+
+processes both configured policies. If no profiles exist, HEADBANG stops and lists the Git remotes it detected instead of returning a fake successful empty result or pushing private content blindly.
+
+### Human output vs JSON
+
+HEADBANG's normal terminal output is designed for people: concise status sections, success/failure markers, profile names, destinations and summaries. JSON is explicitly opt-in for scripts and automation:
+
+```bash
+headbang status
+headbang push --all
+
+# Machine-readable equivalents
+headbang status --json
+headbang push --all --json
+```
+
 ## CLI
 
 ### `headbang status`
@@ -184,6 +244,21 @@ headbang commit "feat(api): add execution endpoint" --all
 `--all` is explicit because silently turning every working-tree change into a commit is unsafe for both humans and agents.
 
 Supported types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, and `revert`.
+
+### `headbang push [profile]`
+
+`push` is HEADBANG's primary publishing command. It resolves the selected HEADBANG profile and applies its review, projection, safety, history and delivery rules.
+
+```bash
+headbang push github-public
+headbang push codeberg-private
+headbang push github-public --dry-run
+headbang push --all
+```
+
+`headbang push --all` means **all configured manually eligible HEADBANG profiles**, not every Git remote. This distinction is intentional and protects repositories where different remotes have different include/exclude rules.
+
+If a Git remote exists but no matching profile exists, HEADBANG explains the difference and refuses to bypass policy. Use `git push` directly only when you deliberately want raw Git behavior outside HEADBANG.
 
 ### `headbang preview [profile]`
 
