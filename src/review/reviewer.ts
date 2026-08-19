@@ -1,4 +1,6 @@
 import { stat } from 'node:fs/promises';
+import { resolveWithin } from '../utils/path.js';
+import { createHash } from 'node:crypto';
 import { git, isClean, currentBranch } from '../git/git.js';
 import type { Finding, HeadbangConfig, Profile } from '../types.js';
 import { runShell } from '../utils/process.js';
@@ -8,6 +10,9 @@ import { validateCommitMessage } from './conventional.js';
 export interface ReviewOptions {
   headRef?: string;
   enforceBranchPolicy?: boolean;
+  scope?: 'working-tree'|'staged'|'branch'|'commit'|'change-request';
+  commit?: string;
+  runTasks?: boolean;
 }
 
 export async function reviewRepo(
@@ -35,13 +40,25 @@ export async function reviewRepo(
   }
 
   const base = profile.branch?.main ?? 'main';
-  const range = `${base}...${headRef}`;
-  const diff = await git(repo, ['diff', '--stat', range], true);
-  const names = await git(repo, ['diff', '--name-only', range], true);
-  const files = names.stdout.split(/\r?\n/).filter(Boolean);
+  const scope=options.scope??profile.review?.scope??'branch';
+  if(scope==='change-request')throw new Error('Change-request review requires provider-supplied base and head refs; local inference is not safe.');
+  const diffArgs=scope==='working-tree'?[]:scope==='staged'?['--cached']:scope==='commit'?[`${options.commit??headRef}^!`]:[`${base}...${headRef}`];
+  const range = diffArgs[0]??'working-tree';
+  const diff = await git(repo, ['diff', '--stat', ...diffArgs], true);
+  const names = await git(repo, ['diff', '--name-only', ...diffArgs], true);
+  if(diff.exitCode!==0)throw new Error(`Unable to inspect review diff: ${diff.stderr||diff.stdout}`);
+  if(names.exitCode!==0)throw new Error(`Unable to list review files: ${names.stderr||names.stdout}`);
+  let files = names.stdout.split(/\r?\n/).filter(Boolean);
+  if(scope==='working-tree'){
+    const untracked=await git(repo,['ls-files','--others','--exclude-standard'],true);
+    if(untracked.exitCode!==0)throw new Error(`Unable to list untracked files: ${untracked.stderr||untracked.stdout}`);
+    files=[...new Set([...files,...untracked.stdout.split(/\r?\n/).filter(Boolean)])];
+  }
 
   if (profile.requireConventionalCommits) {
-    const log = await git(repo, ['log', '--format=%s', range], true);
+    const commitRange = scope === 'working-tree' || scope === 'staged' ? `${base}...${headRef}` : range;
+    const log = await git(repo, ['log', '--format=%s', commitRange], true);
+    if(log.exitCode!==0)throw new Error(`Unable to inspect commit messages: ${log.stderr||log.stdout}`);
     for (const subject of log.stdout.split(/\r?\n/).filter(Boolean)) {
       const result = validateCommitMessage(subject);
       if (!result.valid) {
@@ -56,7 +73,7 @@ export async function reviewRepo(
 
   for (const file of files) {
     try {
-      const info = await stat(`${repo}/${file}`);
+      const info = await stat(resolveWithin(repo,file,'review file'));
       if (info.size > 1_000_000) {
         findings.push({
           severity: 'medium',
@@ -68,7 +85,7 @@ export async function reviewRepo(
     } catch {}
   }
 
-  const taskNames = profile.review?.tasks ?? [];
+  const taskNames = options.runTasks===false?[]:(profile.review?.tasks ?? []);
   const tasks = [] as any[];
 
   for (const name of taskNames) {
@@ -79,7 +96,7 @@ export async function reviewRepo(
     }
 
     const result = await runShell(def.command, {
-      cwd: def.cwd ? `${repo}/${def.cwd}` : repo,
+      cwd: def.cwd ? resolveWithin(repo,def.cwd,`task '${name}' cwd`) : repo,
       timeoutMs: def.timeoutMs ?? 120000
     });
 
@@ -93,10 +110,12 @@ export async function reviewRepo(
     }
   }
 
+  for(const finding of findings){finding.fingerprint=createHash('sha256').update(`${finding.category}\0${finding.file??''}\0${finding.line??''}\0${finding.message}`).digest('hex').slice(0,24);finding.state='new';finding.rationale??=finding.message;}
   return {
     branch,
     headRef,
     base,
+    scope,
     branchPolicy,
     clean,
     files,

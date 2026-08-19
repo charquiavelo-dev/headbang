@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0 - 2026-08-19
+
+### Added
+
+- Stable operation envelopes, immutable confirmation digests, redaction, mutation locks, transaction journals, partial-state reporting, and safe release resume.
+- Release planning/execution with version adapters, notes/changelog, divergence preflight, atomic push, provider releases, npm publication, and supply-chain artifacts.
+- Explicit native `flow init` for consumer repositories missing configured `develop`, without external `git-flow`, checkout changes, history guessing, or remote push.
+- Provider-neutral change requests, project detection/presets, config migration, multi-source credential discovery, scanners, recovery, executable plugin registries, unified/independent monorepo releases, and MCP resources.
+- Real stdio MCP tests covering handshake, tools, prompts, resources, confirmation-bound mutation, and protocol-only stdout.
+
+### Safety
+
+- Package publication is opt-in and requires permission, an exact plan digest, npm authentication, pack validation, and registry verification.
+- HEADBANG refuses unsafe replay, stale bases, unsupported capabilities, unapproved review publication, and incomplete special-object projections.
+
 ## 1.1.3
 
 ### Fixed

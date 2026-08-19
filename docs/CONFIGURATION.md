@@ -4,7 +4,11 @@ HEADBANG merges two JSON files: `~/.config/headbang/config.json` first, then `<r
 
 ## Top-level fields
 
-`version` must be `1`. `defaultProfile` is optional. `profiles` contains named delivery policies. `tasks` contains explicitly authorized commands that review/delivery gates may invoke.
+`version` may be `1` for backward compatibility or `2` for the complete feature set. `defaultProfile` is optional. `profiles` contains named delivery policies. `tasks` contains explicitly authorized commands that review/delivery gates may invoke. Version 2 also supports `deliverySets`, `channels`, and `plugins`.
+
+Version 2 profile fields include `changeRequest`, `packagePublish`, `scanners`, expanded release planning/publishing/artifact settings, and permissions `publishPackage`, `publishReview`, and `repair`. See `docs/V2.md` and this repository's `.headbang.json` for a complete self-release example.
+
+`packagePublish` is opt-in. Its npm adapter accepts repository-relative `path`, `registry`, `access`, `tag`, `provenance`, and named `prePublish` tasks. In a workspace repository, `workspaces: true` plans and publishes each impacted non-private package in dependency order; independent mode reads explicit versions from root `package.json` under `headbang.releaseVersions`.
 
 ## Profile
 

@@ -9,6 +9,8 @@ import type { HeadbangConfig, Profile } from './types.js';
 import { reviewRepo } from './review/reviewer.js';
 import { runShell } from './utils/process.js';
 import { assertDeliveryAllowed, deliveryAllowed, type DeliveryContext } from './delivery-policy.js';
+import { runScanner } from './scanners.js';
+import { resolveWithin } from './utils/path.js';
 
 function assertPermission(profile: Profile, key: keyof NonNullable<Profile['permissions']>, explicit = false) {
   const value = profile.permissions?.[key];
@@ -23,7 +25,7 @@ async function tasks(repo: string, names: string[] | undefined, profile: Profile
     const def = profile.tasks?.[name] ?? config.tasks?.[name];
     if (!def) throw new Error(`Task '${name}' is not defined.`);
     const result = await runShell(def.command, {
-      cwd: def.cwd ? join(repo, def.cwd) : repo,
+      cwd: def.cwd ? resolveWithin(repo, def.cwd, `task '${name}' cwd`) : repo,
       timeoutMs: def.timeoutMs ?? 120000
     });
     results.push({ name, ...result });
@@ -113,20 +115,25 @@ export async function deliver(
     config,
     { context }
   );
-  const blockers = preview.review.findings.filter((finding: any) => ['critical', 'high'].includes(finding.severity));
+  const blockOn=profile.review?.blockOn??['critical','high'];
+  const blockers = preview.review.findings.filter((finding: any) => blockOn.includes(finding.severity));
   if (blockers.length) {
     throw new Error(`Delivery blocked by review findings: ${blockers.map((x: any) => x.message).join('; ')}`);
   }
 
   if (dryRun) return { ...preview, dryRun: true };
 
+  const scanners=[];
+  for(const scanner of profile.scanners??[]){const result=await runScanner(repo,scanner);scanners.push(result);if(scanner.required&&!result.passed)throw new Error(`Required scanner '${scanner.adapter}' failed.`);}
   await tasks(repo, profile.preDelivery, profile, config);
   const history = preview.history;
 
   if (history === 'preserve' && !profile.projection) {
+    const existing=(await git(repo,['ls-remote',profile.remote,`refs/heads/${preview.targetBranch}`])).stdout.trim().split(/\s+/)[0];if(existing){await git(repo,['fetch',profile.remote,`refs/heads/${preview.targetBranch}`]);const fastForward=(await git(repo,['merge-base','--is-ancestor','FETCH_HEAD',preview.source],true)).exitCode===0;if(!fastForward)throw new Error(`Remote ${profile.remote}/${preview.targetBranch} diverged from ${preview.source}; HEADBANG will not overwrite it.`);}
     const result = await git(repo, ['push', profile.remote, `${preview.source}:refs/heads/${preview.targetBranch}`]);
+    const accepted=(await git(repo,['ls-remote',profile.remote,`refs/heads/${preview.targetBranch}`])).stdout.trim().split(/\s+/)[0];if(accepted!==preview.source)throw new Error(`Remote '${profile.remote}' did not confirm ${preview.targetBranch} at ${preview.source}.`);
     await tasks(repo, profile.postDelivery, profile, config);
-    return { ...preview, success: true, mode: 'preserve', push: result.stdout || result.stderr };
+    return { ...preview, success: true, mode: 'preserve', scanners, push: result.stdout || result.stderr };
   }
 
   const temp = await mkdtemp(join(tmpdir(), 'headbang-'));
@@ -158,6 +165,7 @@ export async function deliver(
     }
 
     const pushed = await git(out, args);
+    const projectedSha=(await git(out,['rev-parse','HEAD'])).stdout.trim(),accepted=(await git(out,['ls-remote','target',`refs/heads/${preview.targetBranch}`])).stdout.trim().split(/\s+/)[0];if(accepted!==projectedSha)throw new Error(`Remote projection did not confirm ${preview.targetBranch} at ${projectedSha}.`);
     await tasks(repo, profile.postDelivery, profile, config);
 
     return {
@@ -167,6 +175,7 @@ export async function deliver(
       filesIncluded: projection.included.length,
       filesExcluded: projection.excluded.length,
       safetyFindings: findings,
+      scanners,
       push: pushed.stdout || pushed.stderr
     };
   } finally {

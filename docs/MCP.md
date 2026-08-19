@@ -29,6 +29,8 @@ If you prefer not to install globally:
 
 ## Tools
 
+All 2.0 responses use the stable operation envelope. Every mutation tool defaults to returning a state-bound plan. Invoke it again with `dryRun=false` and that plan's `confirmation` digest; publishing, merging, and releases keep their richer domain-specific plans as well.
+
 HEADBANG exposes:
 
 - `headbang_status` — repository status and remotes.
@@ -42,6 +44,8 @@ HEADBANG exposes:
 - `headbang_flow_finish` — review and finish Git Flow, then run any configured event-driven deliveries.
 
 `headbang_flow_start` and `headbang_flow_finish` are mutating tools. The selected profile must use `branch.strategy: "git-flow"`, must set `permissions.flow: true`, and the working tree must be clean.
+
+2.0 additionally exposes `headbang_flow_init`, release plan/execute, package plan/publish, provider-neutral change requests, init/config/recovery/resume, operation history, and review publication. Resources expose redacted config, profiles/channels, workflow status, provider capabilities, and journals. See [the 2.0 workflow guide](V2.md).
 
 The finish tool always runs deterministic review/quality gates before integration. Branch cleanup can be disabled with `deleteBranch=false`.
 
@@ -69,7 +73,7 @@ That matters for AI agents: the model cannot bypass a stable-release policy mere
 Start a HEADBANG feature called order-flow.
 ```
 
-The model can call `headbang_flow_start` with `kind=feature`, `name=order-flow`.
+The model first calls `headbang_flow_start` with `kind=feature`, `name=order-flow`, then repeats it with `dryRun=false` and the returned digest.
 
 Later:
 
@@ -77,7 +81,7 @@ Later:
 Review this feature and finish it with Git Flow.
 ```
 
-The model can call `headbang_flow_finish`. HEADBANG executes deterministic gates before merging into `develop`, then runs profiles configured for `feature-finish`.
+The model plans and confirms `headbang_flow_finish`. HEADBANG executes deterministic gates before merging into `develop`, then runs profiles configured for `feature-finish`.
 
 For a release:
 

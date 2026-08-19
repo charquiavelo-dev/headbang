@@ -5,6 +5,14 @@
 **Status baseline:** v1.0.0 published; v1.1.0 work includes native Git Flow + event-driven delivery policies.  
 **Audience:** Codex / maintainers implementing the next HEADBANG releases.
 
+## 2.0.0 unified-release decision — 2026-08-19
+
+The maintainer explicitly superseded the staged-version guidance below: every roadmap capability is in scope for one 2.0.0 release. The implementation contract and 50-item ledger live in `_bmad-output/specs/spec-roadmap-complete-release/`.
+
+Implementation evidence covers operation envelopes, plan confirmation, locks/journals/resume, native flow initialization, release orchestration, provider-neutral collaboration, review, sets/channels, init/presets, migration/credentials/scanners, repository safeguards, plugins, monorepos, npm publishing, supply-chain artifacts, and real stdio MCP tools/resources. This repository dogfoods the release through a tracked `main`/trunk `.headbang.json` and does not create `develop` locally.
+
+The historical sections remain as requirement provenance. Their former future-version labels no longer defer implementation.
+
 ---
 
 ## 1. Product principle

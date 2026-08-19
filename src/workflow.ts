@@ -125,7 +125,9 @@ export async function gitFlowStatus(repo: string, profile: Profile) {
   const branches = (await git(repo, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']))
     .stdout.split(/\r?\n/).filter(Boolean);
 
-  return {
+  const mainExists = branches.includes(cfg.main);
+  const developExists = branches.includes(cfg.develop);
+  const resolved = {
     strategy: 'git-flow' as const,
     currentBranch: branch,
     classification: classify(branch, cfg),
@@ -137,8 +139,27 @@ export async function gitFlowStatus(repo: string, profile: Profile) {
       hotfix: cfg.hotfixPrefix
     },
     branches,
+    mainExists,
+    developExists,
+    ready: mainExists && developExists,
     clean: await isClean(repo)
   };
+  if(resolved.main===resolved.develop)throw new Error('Git Flow main and develop branches must be different.');
+  return resolved;
+}
+
+async function validateRef(repo:string,branch:string){const result=await git(repo,['check-ref-format','--branch',branch],true);if(result.exitCode!==0)throw new Error(`Invalid branch name '${branch}'.`);}
+
+export async function gitFlowInit(repo:string, profile:Profile) {
+  assertFlowPermission(profile);
+  await ensureClean(repo);
+  const cfg=flowConfig(profile);
+  const branch=await currentBranch(repo);
+  if(!(await branchExists(repo,cfg.main))) throw new Error(`Required Git Flow base branch '${cfg.main}' does not exist.`);
+  if(await branchExists(repo,cfg.develop)) return {success:true,action:'init' as const,status:'already-completed' as const,created:false,main:cfg.main,develop:cfg.develop,currentBranch:branch,sourceSha:await branchSha(repo,cfg.develop)};
+  const sourceSha=await branchSha(repo,cfg.main);
+  await git(repo,['branch',cfg.develop,cfg.main]);
+  return {success:true,action:'init' as const,status:'completed' as const,created:true,main:cfg.main,develop:cfg.develop,currentBranch:branch,sourceSha};
 }
 
 export async function gitFlowStart(repo: string, kind: GitFlowKind, name: string, profile: Profile) {
@@ -154,6 +175,7 @@ export async function gitFlowStart(repo: string, kind: GitFlowKind, name: string
   const prefix = kind === 'feature' ? cfg.featurePrefix : kind === 'release' ? cfg.releasePrefix : cfg.hotfixPrefix;
   const base = kind === 'hotfix' ? cfg.main : cfg.develop;
   const branch = `${prefix}${value}`;
+  await validateRef(repo,branch);
 
   if (!(await branchExists(repo, base))) throw new Error(`Required Git Flow base branch '${base}' does not exist.`);
   if (await branchExists(repo, branch)) throw new Error(`Branch '${branch}' already exists.`);
@@ -191,6 +213,7 @@ export async function gitFlowFinish(
 
   const prefix = kind === 'feature' ? cfg.featurePrefix : kind === 'release' ? cfg.releasePrefix : cfg.hotfixPrefix;
   const branch = `${prefix}${value}`;
+  await validateRef(repo,branch);
   if (!(await branchExists(repo, branch))) throw new Error(`Branch '${branch}' does not exist.`);
 
   const originalBranch = await currentBranch(repo);
@@ -201,7 +224,8 @@ export async function gitFlowFinish(
   const reviewBase = kind === 'hotfix' ? cfg.main : cfg.develop;
   const reviewProfile: Profile = { ...profile, branch: { ...(profile.branch ?? {}), main: reviewBase } };
   const review = options.review === false ? undefined : await reviewRepo(repo, reviewProfile, config);
-  const blockers = review?.findings.filter((finding) => ['critical', 'high'].includes(finding.severity)) ?? [];
+  const blockOn=profile.review?.blockOn??['critical','high'];
+  const blockers = review?.findings.filter((finding) => blockOn.includes(finding.severity as any)) ?? [];
   if (blockers.length) {
     throw new Error(`Git Flow finish blocked by review findings: ${blockers.map((finding) => finding.message).join('; ')}`);
   }

@@ -1,0 +1,63 @@
+import { getProfile, loadConfig } from './config/load.js';
+import { status } from './commands/status.js';
+import { reviewRepo } from './review/reviewer.js';
+import { previewDelivery, deliver } from './delivery.js';
+import { gitFlowInit, gitFlowStatus } from './workflow.js';
+import { finishFlow, startFlow } from './flow-orchestrator.js';
+import { releasePlan } from './release/planner.js';
+import { executeRelease } from './release/executor.js';
+import { resumeRelease } from './release/executor.js';
+import { planPackagePublish, publishPackage } from './packages/publisher.js';
+import { operation, planDigest } from './domain/operation.js';
+import { providerCapabilities, detectProvider } from './providers.js';
+import { currentBranch, currentCommit, remoteUrl } from './git/git.js';
+import { changeRequestAction, changeRequestPlan, openChangeRequest, postReview, githubFlowStart } from './collaboration.js';
+import { inspectRecovery, listJournals, loadJournal, repairRecovery } from './operations/journal.js';
+import { createJournal, saveJournal, withOperationLock } from './operations/journal.js';
+import { credentialStatus, detectProject, initProject, migrateConfig, validateConfigFile, type Preset } from './onboarding.js';
+import { commit } from './commands/commit.js';
+import { loadPlugins } from './plugins.js';
+import { deliveryAllowed } from './delivery-policy.js';
+import { releaseInspect } from './commands/release.js';
+
+async function selected(repo:string,name?:string){const config=await loadConfig(repo);const [profileName,profile]=getProfile(config,name);return{config,profileName,profile};}
+async function journaled<T extends {operationId:string;status:string}>(repo:string,type:string,context:unknown,fn:()=>Promise<T>){return withOperationLock(repo,type,async()=>{const journal=await createJournal(repo,type,['execute'],context);try{const result=await fn();journal.steps[0]!.status='completed';journal.status=result.status==='partial'?'partial':'completed';await saveJournal(repo,journal);return{...result,operationId:journal.operationId};}catch(error){journal.steps[0]!.status='failed';journal.status='failed';journal.nextActions=['Correct the failure and retry the operation explicitly.'];await saveJournal(repo,journal);throw error;}});}
+async function runDeliveryGroup(repo:string,kind:'set'|'channel',name:string,dryRun:boolean){const config=await loadConfig(repo),members=(kind==='set'?config.deliverySets:config.channels)?.[name];if(!members)throw new Error(`Unknown delivery ${kind} '${name}'.`);const run=async(journal?:Awaited<ReturnType<typeof createJournal>>)=>{const results=[];for(let index=0;index<members.length;index++){const profileName=members[index]!,profile=config.profiles[profileName];if(!profile){results.push({profile:profileName,success:false,error:'Profile is not configured.'});if(journal){journal.steps[index]!.status='failed';journal.steps[index]!.detail=results.at(-1);await saveJournal(repo,journal);}continue;}try{const result=await deliver(repo,profileName,profile,config,{dryRun});results.push({profile:profileName,success:true,result});if(journal){journal.steps[index]!.status='completed';journal.steps[index]!.detail={profile:profileName};await saveJournal(repo,journal);}}catch(error:any){results.push({profile:profileName,success:false,error:error?.message??String(error)});if(journal){journal.steps[index]!.status='failed';journal.steps[index]!.detail=results.at(-1);await saveJournal(repo,journal);}}}const failed=results.filter(item=>!item.success);if(journal){journal.status=failed.length?'partial':'completed';journal.nextActions=failed.map(item=>`Retry destination ${item.profile} after correcting: ${item.error}`);await saveJournal(repo,journal);}return operation({kind,name,dryRun,results},failed.length?'partial':dryRun?'planned':'completed',{operationId:journal?.operationId,nextActions:failed.map(item=>`Retry destination ${item.profile}.`)});};if(dryRun)return run();return withOperationLock(repo,`delivery-${kind}`,async()=>run(await createJournal(repo,`delivery-${kind}`,members,{name,kind})));}
+export class HeadbangApplication {
+  mutationPlan=async(repo:string,action:string,input:unknown)=>{const config=await loadConfig(repo);const plan={action,input,sourceSha:await currentCommit(repo),branch:await currentBranch(repo),configDigest:planDigest(config)};const digest=planDigest(plan);return operation(plan,'planned',{planDigest:digest,nextActions:[`Execute '${action}' with confirmation ${digest}`]});};
+  status=async(repo:string)=>operation(await status(repo));
+  review=async(repo:string,name?:string)=>{const x=await selected(repo,name);return operation({profile:x.profileName,...await reviewRepo(repo,x.profile,x.config)});};
+  reviewSnapshot=async(repo:string,name?:string)=>{const x=await selected(repo,name);return operation({profile:x.profileName,...await reviewRepo(repo,x.profile,x.config,{runTasks:false})});};
+  commit=async(repo:string,message:string,all=false,name?:string)=>{const x=await selected(repo,name);if(x.profile.permissions?.commit!==true)throw new Error("Profile does not permit 'commit'. Set it explicitly to true.");return journaled(repo,'commit',{profile:x.profileName,message,all},async()=>operation(await commit(repo,message,all)));};
+  deliveryPlan=async(repo:string,name?:string)=>{const x=await selected(repo,name);return operation(await previewDelivery(repo,x.profileName,x.profile,x.config),'planned');};
+  deliver=async(repo:string,name:string|undefined,dryRun=true)=>{const x=await selected(repo,name);const run=async()=>operation(await deliver(repo,x.profileName,x.profile,x.config,{dryRun}),dryRun?'planned':'completed');return dryRun?run():journaled(repo,'delivery',{profile:x.profileName},run);};
+  deliverAll=async(repo:string,dryRun=true)=>{const config=await loadConfig(repo),configured=Object.entries(config.profiles);if(!configured.length){const state=await status(repo),names=[...new Set((state.remotes??[]).map(raw=>raw.split('\t')[0]).filter(Boolean))];throw new Error(`No HEADBANG delivery profiles are configured. Git remotes are not automatically treated as delivery profiles because each remote may require different projections, exclusions or release policies.\n${names.length?`Detected Git remotes: ${names.join(', ')}.\n`:''}Create .headbang.json profiles before pushing.`);}const results=[];for(const [name,profile] of configured){const policy=deliveryAllowed(profile,{event:'manual',tag:null});if(!policy.allowed){results.push({profile:name,skipped:true,reason:policy.reason});continue;}try{results.push({profile:name,success:true,result:await deliver(repo,name,profile,config,{dryRun})});}catch(error:any){results.push({profile:name,success:false,error:error?.message??String(error)});}}const failed=results.some(item=>item.success===false);return operation({command:'push',all:true,dryRun,results},failed?'partial':dryRun?'planned':'completed',{nextActions:failed?['Retry failed profiles after correcting their reported errors.']:[]});};
+  deliverGroup=async(repo:string,kind:'set'|'channel',name:string,dryRun=true)=>runDeliveryGroup(repo,kind,name,dryRun);
+  flowStatus=async(repo:string,name?:string)=>{const x=await selected(repo,name);return operation({profile:x.profileName,...await gitFlowStatus(repo,x.profile)});};
+  flowInit=async(repo:string,name?:string)=>{const x=await selected(repo,name);return journaled(repo,'flow-init',{profile:x.profileName},async()=>{const data=await gitFlowInit(repo,x.profile);return operation({profile:x.profileName,...data},data.status);});};
+  flowStart=async(repo:string,kind:'feature'|'release'|'hotfix',value:string,name?:string)=>{const x=await selected(repo,name);return journaled(repo,`flow-${kind}-start`,{profile:x.profileName,value},async()=>operation({profile:x.profileName,...await startFlow(repo,kind,value,x.profile,x.config)}));};
+  flowFinish=async(repo:string,kind:'feature'|'release'|'hotfix',value:string,name?:string,options:{deleteBranch?:boolean}={})=>{const x=await selected(repo,name);return journaled(repo,`flow-${kind}-finish`,{profile:x.profileName,value,options},async()=>operation({profile:x.profileName,...await finishFlow(repo,kind,value,x.profile,x.config,options.deleteBranch===undefined?{}:{deleteBranch:options.deleteBranch})}));};
+  githubFlowStart=async(repo:string,value:string,name?:string)=>{const x=await selected(repo,name);return journaled(repo,'github-flow-start',{profile:x.profileName,value},()=>githubFlowStart(repo,value,x.profile));};
+  releasePlan=async(repo:string,version:string,name?:string)=>{const x=await selected(repo,name);return releasePlan(repo,version,x.profileName,x.profile,x.config);};
+  releaseInspect=async(repo:string,currentVersion:string,name?:string)=>{const x=await selected(repo,name);return operation(await releaseInspect(repo,currentVersion,x.profile.release?.rules??{}));};
+  releaseExecute=async(repo:string,version:string,name:string|undefined,confirmation:string|undefined,dryRun=false)=>{const x=await selected(repo,name);return executeRelease(repo,version,x.profileName,x.profile,x.config,{...(confirmation?{confirmation}:{}),dryRun});};
+  packagePlan=async(repo:string,name?:string)=>{const x=await selected(repo,name);return planPackagePublish(repo,x.profile);};
+  packagePublish=async(repo:string,name:string|undefined,confirmation:string|undefined,dryRun=true)=>{const x=await selected(repo,name);return publishPackage(repo,x.profile,x.config,{...(confirmation?{confirmation}:{}),dryRun});};
+  providerCapabilities=async(repo:string,name?:string)=>{const x=await selected(repo,name);const url=await remoteUrl(repo,x.profile.remote);return operation({profile:x.profileName,url,...providerCapabilities(x.profile.provider??detectProvider(url))});};
+  plugins=async(repo:string)=>{const config=await loadConfig(repo);const plugins=await loadPlugins(config.plugins,repo);return operation(plugins.map(plugin=>({manifest:plugin.manifest,loadedSlots:Object.keys(plugin.adapters)})));};
+  changePlan=async(repo:string,name:string|undefined,input:Parameters<typeof changeRequestPlan>[2])=>{const x=await selected(repo,name);return changeRequestPlan(repo,x.profile,input);};
+  changeCreate=async(repo:string,name:string|undefined,input:Parameters<typeof openChangeRequest>[3])=>{const x=await selected(repo,name);return openChangeRequest(repo,x.profile,x.config,input);};
+  changeAction=async(repo:string,name:string|undefined,id:number,action:'inspect'|'checks'|'reviewers'|'merge'|'close',confirmation?:string)=>{const x=await selected(repo,name);return changeRequestAction(repo,x.profile,id,action,confirmation);};
+  reviewPublish=async(repo:string,name:string|undefined,id:number,body:string,approved:boolean)=>{const x=await selected(repo,name);return journaled(repo,'review-publish',{profile:x.profileName,id},()=>postReview(repo,x.profile,id,body,approved));};
+  detect=async(repo:string)=>operation(await detectProject(repo));
+  init=async(repo:string,preset:Preset,write=false,force=false)=>operation(await initProject(repo,preset,{write,force}),write?'completed':'planned');
+  configValidate=async(repo:string)=>operation(await validateConfigFile(repo));
+  configMigrate=async(repo:string,confirmed=false)=>operation(await migrateConfig(repo,confirmed));
+  credentials=async()=>operation(await credentialStatus());
+  recovery=async(repo:string)=>operation(await inspectRecovery(repo));
+  repair=async(repo:string,name:string|undefined,confirmed=false)=>{const x=await selected(repo,name);return operation(await repairRecovery(repo,x.profile.permissions?.repair===true&&confirmed));};
+  journals=async(repo:string)=>operation(await listJournals(repo));
+  journal=async(repo:string,id:string)=>operation(await loadJournal(repo,id));
+  resume=async(repo:string,id:string,name:string|undefined,confirmation?:string)=>{const x=await selected(repo,name);const journal=await loadJournal(repo,id);if(journal.type==='release')return resumeRelease(repo,id,x.profileName,x.profile,x.config,confirmation);if(journal.status==='completed')return operation(journal,'already-completed',{operationId:id});throw new Error(`Operation type '${journal.type}' does not have a provably safe resume handler. Retry its idempotent command explicitly.`);};
+}
+export const app=new HeadbangApplication();

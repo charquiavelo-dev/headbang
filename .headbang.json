@@ -1,18 +1,16 @@
 {
-  "version": 1,
-  "defaultProfile": "flow",
+  "version": 2,
+  "defaultProfile": "self-release",
   "tasks": {
-    "check": {
-      "command": "npm run check",
-      "timeoutMs": 180000
-    }
+    "check": { "command": "npm run check", "timeoutMs": 300000 },
+    "pack": { "command": "npm pack --dry-run", "timeoutMs": 300000 }
   },
   "profiles": {
-    "flow": {
+    "self-release": {
       "remote": "origin",
       "provider": "github",
-      "sourceRef": "develop",
-      "targetBranch": "develop",
+      "sourceRef": "main",
+      "targetBranch": "main",
       "history": "preserve",
       "permissions": {
         "inspect": true,
@@ -20,23 +18,41 @@
         "commit": true,
         "push": true,
         "release": true,
-        "flow": true
+        "publishPackage": true,
+        "createPr": true,
+        "mergePr": true,
+        "publishReview": false,
+        "repair": false,
+        "flow": false
       },
-      "review": {
-        "tasks": ["check"],
-        "blockOn": ["critical", "high"]
-      },
-      "branch": {
-        "strategy": "git-flow",
-        "main": "main",
-        "develop": "develop"
-      },
+      "review": { "tasks": ["check"], "blockOn": ["critical", "high"], "scope": "branch" },
+      "branch": { "strategy": "trunk", "main": "main", "allowed": ["agent/**", "feature/**", "fix/**", "chore/**"] },
       "release": {
         "enabled": true,
-        "tagPrefix": "v"
+        "tagPrefix": "v",
+        "remote": "origin",
+        "atomicPush": true,
+        "notes": { "strategy": "headbang", "changelog": "CHANGELOG.md" },
+        "versionFiles": [
+          { "adapter": "package-json", "path": "package.json" },
+          { "adapter": "package-json", "path": "package-lock.json" }
+        ],
+        "providerRelease": { "enabled": true, "draft": false, "generatedNotes": false, "assets": [".headbang/packages/headbang-mcp-2.0.0.tgz"] },
+        "artifacts": { "checksums": true, "sbom": true, "provenance": true, "outputDir": ".headbang/artifacts" }
+      },
+      "packagePublish": {
+        "enabled": true,
+        "publisher": "npm",
+        "path": ".",
+        "access": "public",
+        "tag": "latest",
+        "provenance": false,
+        "prePublish": ["check", "pack"]
       },
       "requireClean": true,
       "requireConventionalCommits": true
     }
-  }
+  },
+  "channels": { "stable": ["self-release"] },
+  "deliverySets": { "release": ["self-release"] }
 }

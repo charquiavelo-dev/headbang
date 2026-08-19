@@ -2,170 +2,59 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
-import { loadConfig,getProfile } from './config/load.js';
-import { status } from './commands/status.js';
-import { reviewRepo } from './review/reviewer.js';
-import { previewDelivery,deliver } from './delivery.js';
-import { commit } from './commands/commit.js';
-import { releaseInspect } from './commands/release.js';
-import { gitFlowStatus } from './workflow.js';
-import { finishFlow, startFlow } from './flow-orchestrator.js';
-import { deliveryAllowed } from './delivery-policy.js';
+import { app } from './application.js';
+import { redact, requireConfirmation } from './domain/operation.js';
+import { loadConfig } from './config/load.js';
 
-const text = (x: any) => ({ content: [{ type: 'text' as const, text: JSON.stringify(x, null, 2) }] });
+const text=(x:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(x,null,2)}]});
+const repoSchema=z.object({repo:z.string().default('.')});
+function build(){const server=new McpServer({name:'headbang',version:'2.0.0'});
+  const guarded=async(repo:string,action:string,input:unknown,dryRun:boolean,confirmation:string|undefined,execute:()=>Promise<unknown>)=>{const planned=await app.mutationPlan(repo,action,input);if(dryRun)return planned;requireConfirmation(planned.data,confirmation);return execute();};
+  server.registerTool('headbang_status',{description:'Inspect repository status. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.status(repo)));
+  server.registerTool('headbang_review',{description:'Run structured review and configured quality gates.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.review(repo,profile)));
+  server.registerTool('headbang_preview',{description:'Plan one governed delivery. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.deliveryPlan(repo,profile)));
+  server.registerTool('headbang_push',{description:'Governed single-profile or all-profile delivery. Defaults to a confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),all:z.boolean().default(false),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,all,dryRun,confirmation})=>text(await guarded(repo,'deliver',{profile,all},dryRun,confirmation,()=>all?app.deliverAll(repo,false):app.deliver(repo,profile,false))));
+  server.registerTool('headbang_deliver',{description:'Alias for governed delivery. Defaults to a confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,dryRun,confirmation})=>text(await guarded(repo,'deliver',{profile},dryRun,confirmation,()=>app.deliver(repo,profile,false))));
+  server.registerTool('headbang_delivery_group',{description:'Deliver a configured set or channel with per-destination results.',inputSchema:z.object({repo:z.string().default('.'),kind:z.enum(['set','channel']),name:z.string(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,kind,name,dryRun,confirmation})=>text(await guarded(repo,'delivery-group',{kind,name},dryRun,confirmation,()=>app.deliverGroup(repo,kind,name,false))));
+  server.registerTool('headbang_commit',{description:'Create a governed Conventional Commit. Defaults to a confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),message:z.string(),all:z.boolean().default(false),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,message,all,dryRun,confirmation})=>text(await guarded(repo,'commit',{profile,message,all},dryRun,confirmation,()=>app.commit(repo,message,all,profile))));
+  server.registerTool('headbang_flow_status',{description:'Inspect native Git Flow readiness. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.flowStatus(repo,profile)));
+  server.registerTool('headbang_flow_init',{description:'Plan or explicitly initialize a missing configured develop branch from main.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,dryRun,confirmation})=>text(await guarded(repo,'flow-init',{profile},dryRun,confirmation,()=>app.flowInit(repo,profile))));
+  server.registerTool('headbang_flow_start',{description:'Plan or start a native Git Flow branch.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),kind:z.enum(['feature','release','hotfix']),name:z.string(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,kind,name,dryRun,confirmation})=>text(await guarded(repo,'flow-start',{profile,kind,name},dryRun,confirmation,()=>app.flowStart(repo,kind,name,profile))));
+  server.registerTool('headbang_flow_finish',{description:'Plan or finish a native Git Flow branch with review and deliveries.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),kind:z.enum(['feature','release','hotfix']),name:z.string(),deleteBranch:z.boolean().default(true),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,kind,name,deleteBranch,dryRun,confirmation})=>text(await guarded(repo,'flow-finish',{profile,kind,name,deleteBranch},dryRun,confirmation,()=>app.flowFinish(repo,kind,name,profile,{deleteBranch}))));
+  server.registerTool('headbang_github_flow_start',{description:'Plan or start a configured GitHub Flow branch.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),name:z.string(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,name,dryRun,confirmation})=>text(await guarded(repo,'github-flow-start',{profile,name},dryRun,confirmation,()=>app.githubFlowStart(repo,name,profile))));
+  server.registerTool('headbang_release_plan',{description:'Build the immutable complete release plan. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),version:z.string()})},async({repo,profile,version})=>text(await app.releasePlan(repo,version,profile)));
+  server.registerTool('headbang_release_inspect',{description:'Inspect Conventional Commit SemVer recommendation. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),currentVersion:z.string()})},async({repo,profile,currentVersion})=>text(await app.releaseInspect(repo,currentVersion,profile)));
+  server.registerTool('headbang_release_execute',{description:'Execute an exact release plan. Requires its confirmation digest; dryRun defaults true.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),version:z.string(),confirmation:z.string().optional(),dryRun:z.boolean().default(true)})},async({repo,profile,version,confirmation,dryRun})=>text(await app.releaseExecute(repo,version,profile,confirmation,dryRun)));
+  server.registerTool('headbang_package_plan',{description:'Inspect npm/package publication including registry idempotency. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.packagePlan(repo,profile)));
+  server.registerTool('headbang_package_publish',{description:'Publish through the configured package adapter. Requires permission and plan digest; dryRun defaults true.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),confirmation:z.string().optional(),dryRun:z.boolean().default(true)})},async({repo,profile,confirmation,dryRun})=>text(await app.packagePublish(repo,profile,confirmation,dryRun)));
+  server.registerTool('headbang_provider_capabilities',{description:'Report provider capabilities used by planning. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.providerCapabilities(repo,profile)));
+  server.registerTool('headbang_plugins',{description:'Discover and validate configured HEADBANG plugins. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.plugins(repo)));
+  server.registerTool('headbang_change_plan',{description:'Plan a provider-neutral change request. Read-only apart from provider protection inspection.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),title:z.string(),body:z.string().optional(),source:z.string().optional(),target:z.string().optional(),draft:z.boolean().default(false)})},async({repo,profile,...input})=>text(await app.changePlan(repo,profile,input)));
+  server.registerTool('headbang_change_create',{description:'Push a branch and create the exact planned change request. Requires confirmation digest.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),title:z.string(),body:z.string().optional(),source:z.string().optional(),target:z.string().optional(),draft:z.boolean().default(false),confirmation:z.string()})},async({repo,profile,...input})=>text(await app.changeCreate(repo,profile,input)));
+  server.registerTool('headbang_change_action',{description:'Inspect checks/reviewers, merge, or close a change request. Mutations require confirmation.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),id:z.number().int().positive(),action:z.enum(['inspect','checks','reviewers','merge','close']),confirmation:z.string().optional()})},async({repo,profile,id,action,confirmation})=>text(await app.changeAction(repo,profile,id,action,confirmation)));
+  server.registerTool('headbang_review_publish',{description:'Plan or publish an explicitly approved review comment.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),id:z.number().int().positive(),body:z.string(),approved:z.literal(true),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,id,body,approved,dryRun,confirmation})=>text(await guarded(repo,'review-publish',{profile,id,body,approved},dryRun,confirmation,()=>app.reviewPublish(repo,profile,id,body,approved))));
+  server.registerTool('headbang_init',{description:'Detect a project and preview or explicitly write a preset.',inputSchema:z.object({repo:z.string().default('.'),preset:z.enum(['git-flow','github-flow','stable-backup','public-mirror','private-full-public-sanitized','monorepo-backend','release-only-mirror']),write:z.boolean().default(false),force:z.boolean().default(false),confirmation:z.string().optional()})},async({repo,preset,write,force,confirmation})=>text(write?await guarded(repo,'init',{preset,force},false,confirmation,()=>app.init(repo,preset,true,force)):await app.init(repo,preset,false,force)));
+  server.registerTool('headbang_config_validate',{description:'Validate versioned repository config. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.configValidate(repo)));
+  server.registerTool('headbang_config_migrate',{description:'Plan or migrate v1 config to v2 with backup.',inputSchema:z.object({repo:z.string().default('.'),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,dryRun,confirmation})=>text(await guarded(repo,'config-migrate',{},dryRun,confirmation,()=>app.configMigrate(repo,true))));
+  server.registerTool('headbang_recovery_status',{description:'Inspect locks and incomplete operations. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.recovery(repo)));
+  server.registerTool('headbang_operation_history',{description:'List operation journals. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.journals(repo)));
+  server.registerTool('headbang_resume',{description:'Resume only provably safe incomplete remote/package release steps. Requires the original plan digest.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),operationId:z.string(),confirmation:z.string().optional()})},async({repo,profile,operationId,confirmation})=>text(await app.resume(repo,operationId,profile,confirmation)));
+  server.registerTool('headbang_repair',{description:'Plan or repair only provably stale HEADBANG state.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,dryRun,confirmation})=>text(await guarded(repo,'repair',{profile},dryRun,confirmation,()=>app.repair(repo,profile,true))));
 
-function build() {
-  const server = new McpServer({ name: 'headbang', version: '1.1.2' });
+  const cwd=process.cwd();
+  const resource=(name:string,uri:string,title:string,read:()=>Promise<unknown>)=>server.registerResource(name,uri,{title,mimeType:'application/json'},async parsed=>({contents:[{uri:parsed.href,mimeType:'application/json',text:JSON.stringify(await read(),null,2)}]}));
+  resource('effective-config','headbang://config','Redacted effective configuration',async()=>redact(await loadConfig(cwd)));
+  resource('profiles','headbang://profiles','Delivery profiles and channels',async()=>{const cfg=await loadConfig(cwd);return redact({profiles:cfg.profiles,deliverySets:cfg.deliverySets??{},channels:cfg.channels??{}});});
+  resource('workflow-status','headbang://status','Repository workflow status',async()=>app.status(cwd));
+  resource('latest-review','headbang://latest-review','Latest deterministic review snapshot without executing tasks',async()=>app.reviewSnapshot(cwd));
+  resource('operation-history','headbang://operations','Operation journal history',async()=>app.journals(cwd));
+  resource('latest-release-plan','headbang://latest-release-plan','Latest journaled release plan',async()=>{const result=await app.journals(cwd);const releases=(result.data as any[]).filter(item=>item.type==='release').sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));return releases[0]?.context??null;});
+  resource('provider-capabilities','headbang://provider-capabilities','Configured provider capabilities',async()=>app.providerCapabilities(cwd));
+  resource('plugins','headbang://plugins','Configured validated plugin manifests',async()=>app.plugins(cwd));
 
-  server.registerTool('headbang_status', {
-    description: 'Inspect repository status and remotes. Read-only.',
-    inputSchema: z.object({ repo: z.string().default('.') })
-  }, async ({ repo }) => text(await status(repo)));
-
-  server.registerTool('headbang_review', {
-    description: 'Run deterministic code review, branch policy checks and configured quality gates. Read-only except configured tasks may execute local build/test commands.',
-    inputSchema: z.object({ repo: z.string().default('.'), profile: z.string().optional() })
-  }, async ({ repo, profile }) => {
-    const config = await loadConfig(repo);
-    const [name, selected] = getProfile(config, profile);
-    return text({ profile: name, ...await reviewRepo(repo, selected, config) });
-  });
-
-  server.registerTool('headbang_preview', {
-    description: 'Preview a manual policy-driven delivery without modifying Git remotes.',
-    inputSchema: z.object({ repo: z.string().default('.'), profile: z.string().optional() })
-  }, async ({ repo, profile }) => {
-    const config = await loadConfig(repo);
-    const [name, selected] = getProfile(config, profile);
-    return text(await previewDelivery(repo, name, selected, config));
-  });
-
-  server.registerTool('headbang_push', {
-    description: 'Primary HEADBANG push tool. Push one profile, or every manually eligible profile with all=true. Uses the same projections, safety checks and policies as delivery. Defaults to dryRun=true.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      profile: z.string().optional(),
-      all: z.boolean().default(false),
-      dryRun: z.boolean().default(true)
-    })
-  }, async ({ repo, profile, all, dryRun }) => {
-    const config = await loadConfig(repo);
-    if (!all) {
-      const [name, selected] = getProfile(config, profile);
-      return text(await deliver(repo, name, selected, config, { dryRun }));
-    }
-
-    const results = [];
-    for (const [name, selected] of Object.entries(config.profiles)) {
-      const policy = deliveryAllowed(selected, { event: 'manual', tag: null });
-      if (!policy.allowed) {
-        results.push({ profile: name, skipped: true, reason: policy.reason });
-        continue;
-      }
-      try {
-        results.push({ profile: name, success: true, result: await deliver(repo, name, selected, config, { dryRun }) });
-      } catch (error: any) {
-        results.push({ profile: name, success: false, error: error?.message ?? String(error) });
-      }
-    }
-    return text({ command: 'push', all: true, dryRun, results });
-  });
-
-  server.registerTool('headbang_deliver', {
-    description: 'Perform a manual delivery according to profile policy. Event-restricted stable/release-only profiles refuse manual delivery. Defaults to dryRun=true.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      profile: z.string().optional(),
-      dryRun: z.boolean().default(true)
-    })
-  }, async ({ repo, profile, dryRun }) => {
-    const config = await loadConfig(repo);
-    const [name, selected] = getProfile(config, profile);
-    return text(await deliver(repo, name, selected, config, { dryRun }));
-  });
-
-  server.registerTool('headbang_commit', {
-    description: 'Create a Conventional Commit from already staged changes, or stage all only when all=true.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      message: z.string(),
-      all: z.boolean().default(false)
-    })
-  }, async ({ repo, message, all }) => text(await commit(repo, message, all)));
-
-  server.registerTool('headbang_flow_status', {
-    description: 'Inspect native Git Flow state, current branch classification and configured prefixes. Read-only.',
-    inputSchema: z.object({ repo: z.string().default('.'), profile: z.string().optional() })
-  }, async ({ repo, profile }) => {
-    const config = await loadConfig(repo);
-    const [name, selected] = getProfile(config, profile);
-    return text({ profile: name, ...await gitFlowStatus(repo, selected) });
-  });
-
-  server.registerTool('headbang_flow_start', {
-    description: 'Start a native Git Flow feature, release or hotfix branch. May trigger configured autoOn delivery profiles after local success.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      profile: z.string().optional(),
-      kind: z.enum(['feature','release','hotfix']),
-      name: z.string().min(1)
-    })
-  }, async ({ repo, profile, kind, name }) => {
-    const config = await loadConfig(repo);
-    const [profileName, selected] = getProfile(config, profile);
-    return text({ profile: profileName, ...await startFlow(repo, kind, name, selected, config) });
-  });
-
-  server.registerTool('headbang_flow_finish', {
-    description: 'Finish a native Git Flow branch with review gates, no-ff merge(s), release/hotfix tag when applicable, merge-back, cleanup, then configured event-driven deliveries.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      profile: z.string().optional(),
-      kind: z.enum(['feature','release','hotfix']),
-      name: z.string().min(1),
-      deleteBranch: z.boolean().default(true)
-    })
-  }, async ({ repo, profile, kind, name, deleteBranch }) => {
-    const config = await loadConfig(repo);
-    const [profileName, selected] = getProfile(config, profile);
-    return text({
-      profile: profileName,
-      ...await finishFlow(repo, kind, name, selected, config, { review: true, deleteBranch })
-    });
-  });
-
-  server.registerPrompt('headbang-code-review', {
-    title: 'HEADBANG Code Review',
-    description: 'Review a HEADBANG repository using deterministic findings first, then inspect correctness, security, concurrency, error handling, tests and maintainability.',
-    argsSchema: z.object({ focus: z.string().optional() })
-  }, ({ focus }) => ({
-    messages: [{
-      role: 'user' as const,
-      content: {
-        type: 'text' as const,
-        text: `Run headbang_status and headbang_review before reviewing code. Treat deterministic failures as facts.
-Then review the changed code for correctness, security, race conditions, error handling, tests, API compatibility and maintainability. Prioritize actionable findings with severity, file and rationale. Do not invent issues. ${focus ? `Additional focus: ${focus}` : ''}`
-      }
-    }]
-  }));
-
-  server.registerTool('headbang_release_inspect', {
-    description: 'Recommend a SemVer bump from Conventional Commits. Does not publish or tag.',
-    inputSchema: z.object({
-      repo: z.string().default('.'),
-      currentVersion: z.string(),
-      profile: z.string().optional()
-    })
-  }, async ({ repo, currentVersion, profile }) => {
-    const config = await loadConfig(repo);
-    const [, selected] = getProfile(config, profile);
-    return text(await releaseInspect(repo, currentVersion, selected.release?.rules ?? {}));
-  });
-
+  server.registerPrompt('headbang-code-review',{title:'HEADBANG Code Review',description:'Review through deterministic HEADBANG gates before LLM analysis.',argsSchema:z.object({focus:z.string().optional()})},({focus})=>({messages:[{role:'user' as const,content:{type:'text' as const,text:`Run headbang_status and headbang_review first. Prioritize correctness, security, concurrency, recovery, tests, API compatibility, and actionable evidence.${focus?` Focus: ${focus}`:''}`}}]}));
   return server;
 }
-
-const handle = serveStdio(() => build());
-console.error('HEADBANG MCP 1.1.2 listening on stdio 🤘');
-process.on('SIGINT', () => void handle.close());
-process.on('SIGTERM', () => void handle.close());
+const handle=serveStdio(()=>build());
+console.error('HEADBANG MCP 2.0.0 listening on stdio');
+process.on('SIGINT',()=>void handle.close());process.on('SIGTERM',()=>void handle.close());

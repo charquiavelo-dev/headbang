@@ -6,6 +6,7 @@ __pycache__/
 *.tgz
 .codegraph/
 _bmad/config.user.toml
+.headbang/
 .headbang/history/
 .headbang/tmp/
 .env

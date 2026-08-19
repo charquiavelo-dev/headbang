@@ -87,3 +87,11 @@ Starting with 1.1.2, human terminal output is rendered as readable sections and 
 headbang status --json
 headbang push --all --json
 ```
+
+## A release or npm publication stopped halfway
+
+Run `headbang operations` and inspect the operation ID. If local commit/tag work completed and only remote/provider/package/artifact steps remain, run `headbang resume <id> --confirm=<original-plan-digest>`. HEADBANG skips completed steps. If it cannot prove that replay is safe, it refuses and asks for deliberate recovery instead of resetting, force-pushing, or republishing.
+
+## `package publish` asks for confirmation or reports authentication failure
+
+Run `headbang package plan --json`, review the package/version/registry/access/tag/provenance fields, then pass its exact digest. Publication also requires `packagePublish.enabled=true`, `permissions.publishPackage=true`, successful configured gates, a successful exact-tarball `npm pack`, and `npm whoami`. Tokens belong in npm's normal credential sources or environment, never `.headbang.json`.

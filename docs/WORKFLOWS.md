@@ -183,7 +183,7 @@ Git Flow merge commits created by HEADBANG use Conventional Commit-compatible su
 
 ## SemVer-lite
 
-`headbang release 1.4.2` inspects commit messages since the most recent tag. Breaking changes recommend major, `feat` recommends minor, and `fix`/`perf` recommend patch. Other types default to no release unless profile rules override them. It recommends only; HEADBANG does not publish npm packages automatically.
+`headbang release 1.4.2` is the backward-compatible SemVer inspection command. `headbang release plan <version>` builds the complete immutable transaction, while `release execute` requires its digest and may publish a package only when the profile explicitly enables and permits it. See [V2.md](V2.md).
 
 
 ## Manual push compatibility

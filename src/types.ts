@@ -14,7 +14,7 @@ export type DeliveryEvent =
 
 export interface TaskDefinition { command: string; cwd?: string; timeoutMs?: number }
 export interface ProjectionMap { from: string; to: string }
-export interface Projection { include?: string[]; exclude?: string[]; map?: ProjectionMap[] }
+export interface Projection { include?: string[]; exclude?: string[]; map?: ProjectionMap[]; maxFiles?: number; maxBytes?: number; specialObjects?: 'preserve'|'block' }
 
 export interface Permissions {
   inspect?: boolean;
@@ -26,12 +26,16 @@ export interface Permissions {
   mergePr?: boolean;
   release?: boolean;
   flow?: boolean;
+  publishPackage?: boolean;
+  publishReview?: boolean;
+  repair?: boolean;
 }
 
 export interface ReviewConfig {
   tasks?: string[];
   maxDiffBytes?: number;
   blockOn?: ('critical'|'high'|'medium'|'low')[];
+  scope?: 'working-tree'|'staged'|'branch'|'commit'|'change-request';
 }
 
 export interface BranchConfig {
@@ -48,7 +52,35 @@ export interface ReleaseConfig {
   enabled?: boolean;
   tagPrefix?: string;
   rules?: Record<string, 'major'|'minor'|'patch'|'none'>;
+  remote?: string;
+  atomicPush?: boolean;
+  notes?: { strategy?: 'headbang'|'provider'|'manual'; changelog?: string };
+  versionFiles?: Array<{ adapter: 'package-json'|'json'; path: string; jsonPath?: string }>;
+  providerRelease?: { enabled?: boolean; draft?: boolean; generatedNotes?: boolean; assets?: string[] };
+  artifacts?: { checksums?: boolean; sbom?: boolean; provenance?: boolean; outputDir?: string };
 }
+
+export interface PackagePublishConfig {
+  enabled?: boolean;
+  publisher: 'npm';
+  path?: string;
+  registry?: string;
+  access?: 'public'|'restricted';
+  tag?: string;
+  provenance?: boolean;
+  prePublish?: string[];
+  workspaces?: boolean;
+}
+
+export interface ChangeRequestConfig {
+  enabled?: boolean;
+  target?: string;
+  draft?: boolean;
+  mergeStrategy?: 'merge'|'squash'|'rebase'|'fast-forward';
+  deleteBranch?: boolean;
+}
+
+export interface ScannerConfig { adapter: 'builtin'|'gitleaks'|'trufflehog'; required?: boolean }
 
 export interface DeliveryPolicy {
   allowOn?: DeliveryEvent[];
@@ -68,6 +100,9 @@ export interface Profile {
   review?: ReviewConfig;
   branch?: BranchConfig;
   release?: ReleaseConfig;
+  packagePublish?: PackagePublishConfig;
+  changeRequest?: ChangeRequestConfig;
+  scanners?: ScannerConfig[];
   delivery?: DeliveryPolicy;
   tasks?: Record<string, TaskDefinition>;
   preDelivery?: string[];
@@ -77,10 +112,13 @@ export interface Profile {
 }
 
 export interface HeadbangConfig {
-  version: 1;
+  version: 1|2;
   defaultProfile?: string;
   profiles: Record<string, Profile>;
   tasks?: Record<string, TaskDefinition>;
+  deliverySets?: Record<string, string[]>;
+  channels?: Record<string, string[]>;
+  plugins?: string[];
 }
 
 export interface Finding {
@@ -89,6 +127,23 @@ export interface Finding {
   message: string;
   file?: string;
   line?: number;
+  fingerprint?: string;
+  state?: 'new'|'resolved'|'accepted';
+  rationale?: string;
+  remediation?: string;
+}
+
+export type OperationStatus = 'planned'|'completed'|'partial'|'failed'|'already-completed'|'confirmation-required';
+export interface OperationError { code: string; message: string; retryable?: boolean }
+export interface OperationResult<T = unknown> {
+  operationId: string;
+  success: boolean;
+  status: OperationStatus;
+  data: T;
+  warnings: string[];
+  errors: OperationError[];
+  nextActions: string[];
+  planDigest?: string;
 }
 
 export interface CommandResult {

@@ -1,5 +1,7 @@
 # HEADBANG 🤘
 
+> **2.0.0:** the complete roadmap ships as one release: release transactions, native flow bootstrap, provider-neutral collaboration, recovery, plugins, monorepos, npm publishing, supply-chain artifacts, and MCP resources. See [the 2.0 workflow guide](docs/V2.md).
+
 **Policy-driven Git workflows for humans and AI agents.**
 
 HEADBANG sits between your working repository and the places you publish code. It lets one local repository deliver different, explicitly defined views to different remotes: a full private mirror to Codeberg, a cleaned public projection to GitHub, only a backend subtree to GitLab, a frontend-only snapshot to Bitbucket, or any other combination your workflow needs.
@@ -311,7 +313,7 @@ fix, perf             → patch
 other types           → no release
 ```
 
-This command recommends a version. v1 intentionally does not auto-publish npm packages, auto-tag, or auto-create releases. That keeps release reasoning transparent and lets projects integrate a heavier release system later if they need one.
+This legacy command recommends a version only. HEADBANG 2.0 adds separate plan-confirmed release and package publication commands; neither publishes without explicit profile permissions and confirmation.
 
 ## Profiles: the heart of HEADBANG
 
@@ -688,21 +690,20 @@ See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the field reference and
 
 ## Publishing HEADBANG itself to npm
 
-Maintainers should validate before publishing:
+The tracked `self-release` profile keeps this repository on `main`/trunk and uses HEADBANG itself. Preview both transactions first:
 
 ```bash
-npm install
-npm run check
-npm pack --dry-run
+node dist/cli.js release plan 2.0.0 --profile=self-release --json --no-banner
+node dist/cli.js package plan --profile=self-release --json --no-banner
 ```
 
-Inspect the dry-run file list. Then publish:
+After all tests pass, use the exact returned plan digest. Release execution runs configured checks, commits/tags, atomically pushes, publishes through the npm adapter, verifies the registry, and journals the result:
 
 ```bash
-npm publish
+node dist/cli.js release execute 2.0.0 --profile=self-release --confirm=<digest> --json --no-banner
 ```
 
-The `files` allow-list in `package.json` keeps source tests and local config out of the package while including the compiled CLI/MCP entry points, documentation, README and Apache-2.0 license.
+The `files` allow-list keeps source tests, local config, and journals out of the package while including compiled CLI/MCP entry points, documentation, README, and the Apache-2.0 license.
 
 ## Development
 
@@ -725,7 +726,7 @@ npx @modelcontextprotocol/inspector node dist/mcp.js
 
 HEADBANG v1 focuses on the hard core: profile-driven multi-remote delivery, repository projections, safe snapshot publication, deterministic review gates, Conventional Commits, branch-policy validation, SemVer recommendation, CLI and MCP.
 
-Provider-native PR/MR creation, merge automation, automatic npm publishing, complex independent monorepo releases and hosted policy administration are intentionally left for later versions rather than making the first release fragile or opaque.
+Provider change requests, merge automation, opt-in npm publishing, and monorepo release planning are available in 2.0 through shared domain services. Hosted policy administration remains outside the local CLI/MCP product.
 
 ## License
 
