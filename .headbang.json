@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "defaultProfile": "flow",
+  "tasks": {
+    "check": {
+      "command": "npm run check",
+      "timeoutMs": 180000
+    }
+  },
+  "profiles": {
+    "flow": {
+      "remote": "origin",
+      "provider": "github",
+      "sourceRef": "develop",
+      "targetBranch": "develop",
+      "history": "preserve",
+      "permissions": {
+        "inspect": true,
+        "review": true,
+        "commit": true,
+        "push": true,
+        "release": true,
+        "flow": true
+      },
+      "review": {
+        "tasks": ["check"],
+        "blockOn": ["critical", "high"]
+      },
+      "branch": {
+        "strategy": "git-flow",
+        "main": "main",
+        "develop": "develop"
+      },
+      "release": {
+        "enabled": true,
+        "tagPrefix": "v"
+      },
+      "requireClean": true,
+      "requireConventionalCommits": true
+    }
+  }
+}

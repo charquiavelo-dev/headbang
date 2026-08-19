@@ -1,7 +1,11 @@
 node_modules/
 dist/
 coverage/
+__pycache__/
+*.pyc
 *.tgz
+.codegraph/
+_bmad/config.user.toml
 .headbang/history/
 .headbang/tmp/
 .env
