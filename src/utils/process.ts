@@ -3,7 +3,9 @@ import type { CommandResult } from '../types.js';
 export async function run(command:string,args:string[]=[],opts:{cwd?:string,timeoutMs?:number,env?:NodeJS.ProcessEnv,input?:string}={}):Promise<CommandResult>{
   const started=Date.now();
   return await new Promise((resolve,reject)=>{
-    const child=spawn(command,args,{cwd:opts.cwd,env:{...process.env,...opts.env},shell:false,windowsHide:true});
+    const commandShim=process.platform==='win32'&&/\.(?:cmd|bat)$/i.test(command);
+    if(commandShim&&args.some(arg=>/[\r\n&|<>^%!]/.test(arg)))throw new Error('Unsafe shell metacharacter in Windows command-shim argument.');
+    const child=spawn(command,args,{cwd:opts.cwd,env:{...process.env,...opts.env},shell:commandShim,windowsHide:true});
     let stdout='',stderr=''; let killed=false;
     child.stdout?.on('data',d=>stdout+=d); child.stderr?.on('data',d=>stderr+=d);
     const timer=opts.timeoutMs?setTimeout(()=>{killed=true;child.kill('SIGTERM')},opts.timeoutMs):undefined;
