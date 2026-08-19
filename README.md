@@ -1,7 +1,5 @@
 # HEADBANG 🤘
 
-> **2.0.0:** the complete roadmap ships as one release: release transactions, native flow bootstrap, provider-neutral collaboration, recovery, plugins, monorepos, npm publishing, supply-chain artifacts, and MCP resources. See [the 2.0 workflow guide](docs/V2.md).
-
 **Policy-driven Git workflows for humans and AI agents.**
 
 HEADBANG sits between your working repository and the places you publish code. It lets one local repository deliver different, explicitly defined views to different remotes: a full private mirror to Codeberg, a cleaned public projection to GitHub, only a backend subtree to GitLab, a frontend-only snapshot to Bitbucket, or any other combination your workflow needs.
@@ -18,8 +16,6 @@ HEADBANG sits between your working repository and the places you publish code. I
 ```
 
 HEADBANG is both a normal CLI and an MCP server. You can use it yourself from a terminal or expose the same guarded workflow to Claude, Codex, OpenCode, an IDE, or any MCP-capable client.
-
-> **Push is first-class in 1.1.1.** `headbang push [profile]` is the primary command for sending a profile to its remote. `headbang deliver [profile]` remains available as an advanced alias. Existing profiles remain manually pushable unless they explicitly restrict the `manual` event with `delivery.allowOn`.
 
 ## Why HEADBANG exists
 
@@ -294,7 +290,7 @@ Reports the detected hosting provider and high-level capabilities.
 headbang providers github-public
 ```
 
-Delivery itself remains generic Git. Provider-specific pull-request/release API mutations are intentionally not required for v1's core workflow.
+Delivery itself uses generic Git. Provider-specific APIs are only needed for workflows that interact with hosting features such as pull requests or releases.
 
 ### `headbang release <current-version>`
 
@@ -313,7 +309,7 @@ fix, perf             → patch
 other types           → no release
 ```
 
-This legacy command recommends a version only. HEADBANG 2.0 adds separate plan-confirmed release and package publication commands; neither publishes without explicit profile permissions and confirmation.
+This command only recommends a version. Release execution and package publication are separate operations; publishing requires explicit profile permissions and confirmation.
 
 ## Profiles: the heart of HEADBANG
 
@@ -688,23 +684,6 @@ HEADBANG loads global config first and then overlays the repository config. Keep
 
 See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the field reference and [`examples/basic.headbang.json`](examples/basic.headbang.json) for a multi-remote example.
 
-## Publishing HEADBANG itself to npm
-
-The tracked `self-release` profile keeps this repository on `main`/trunk and uses HEADBANG itself. Preview both transactions first:
-
-```bash
-node dist/cli.js release plan 2.0.0 --profile=self-release --json --no-banner
-node dist/cli.js package plan --profile=self-release --json --no-banner
-```
-
-After all tests pass, use the exact returned plan digest. Release execution runs configured checks, commits/tags, atomically pushes, publishes through the npm adapter, verifies the registry, and journals the result:
-
-```bash
-node dist/cli.js release execute 2.0.0 --profile=self-release --confirm=<digest> --json --no-banner
-```
-
-The `files` allow-list keeps source tests, local config, and journals out of the package while including compiled CLI/MCP entry points, documentation, README, and the Apache-2.0 license.
-
 ## Development
 
 ```bash
@@ -721,12 +700,6 @@ To inspect MCP behavior with the official MCP Inspector after building:
 ```bash
 npx @modelcontextprotocol/inspector node dist/mcp.js
 ```
-
-## Scope of v1
-
-HEADBANG v1 focuses on the hard core: profile-driven multi-remote delivery, repository projections, safe snapshot publication, deterministic review gates, Conventional Commits, branch-policy validation, SemVer recommendation, CLI and MCP.
-
-Provider change requests, merge automation, opt-in npm publishing, and monorepo release planning are available in 2.0 through shared domain services. Hosted policy administration remains outside the local CLI/MCP product.
 
 ## License
 
