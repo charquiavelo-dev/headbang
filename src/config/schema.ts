@@ -31,7 +31,8 @@ const permissions = z.object({
   flow: z.boolean().optional(),
   publishPackage: z.boolean().optional(),
   publishReview: z.boolean().optional(),
-  repair: z.boolean().optional()
+  repair: z.boolean().optional(),
+  git: z.boolean().optional()
 });
 
 const branch = z.object({

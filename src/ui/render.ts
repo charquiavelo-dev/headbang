@@ -143,6 +143,7 @@ export function renderGeneric(value: any) {
     return;
   }
   for (const [key, val] of Object.entries(value ?? {})) {
-    if (typeof val !== 'object') console.log(line(key, val));
+    if (Array.isArray(val)) console.log(line(key, val.join(' ')));
+    else if (typeof val !== 'object') console.log(line(key, val));
   }
 }

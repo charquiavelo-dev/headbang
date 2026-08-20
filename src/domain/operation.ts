@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { OperationResult, OperationStatus } from '../types.js';
 
 const SECRET_KEY = /token|password|secret|authorization|cookie|npm_config_.*auth|api[_-]?key/i;
-const SECRET_VALUE = /(bearer\s+|npm_[A-Za-z0-9_-]+|gh[pousr]_[A-Za-z0-9_]+|glpat-[A-Za-z0-9_-]+)/i;
+const SECRET_VALUE = /(bearer\s+|npm_[A-Za-z0-9_-]+|gh[pousr]_[A-Za-z0-9_]+|glpat-[A-Za-z0-9_-]+|https?:\/\/[^\s/:@]+:[^@\s]+@)/i;
 
 export function redact<T>(value: T): T {
   const seen = new WeakSet<object>();

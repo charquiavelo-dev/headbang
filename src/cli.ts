@@ -14,21 +14,23 @@ import { operation } from './domain/operation.js';
 import { PRESETS, type Preset } from './onboarding.js';
 
 const argv = process.argv.slice(2);
-const flags = new Set(argv.filter((x) => x.startsWith('--')));
-const vals = argv.filter((x) => !x.startsWith('--'));
+const gitSeparator = argv[0] === 'git' ? argv.indexOf('--') : -1;
+const controls = gitSeparator >= 0 ? argv.slice(0, gitSeparator) : argv;
+const flags = new Set(controls.filter((x) => x.startsWith('--')));
+const vals = controls.filter((x) => !x.startsWith('--'));
 const command = vals[0] ?? 'help';
 const repo = process.cwd();
 const json = flags.has('--json');
 
 function flagValue(name: string) {
-  const hit = argv.find((x) => x.startsWith(`--${name}=`));
+  const hit = controls.find((x) => x.startsWith(`--${name}=`));
   return hit?.slice(name.length + 3);
 }
 
 function out(value: unknown, renderer: (value: any) => void = renderGeneric) {
   const envelope = value && typeof value === 'object' && 'operationId' in value ? value : operation(value);
   if (json) console.log(JSON.stringify(envelope, null, 2));
-  else renderer((envelope as any).data);
+  else {renderer((envelope as any).data);if((envelope as any).planDigest)console.log(`\n  Confirmation digest  ${(envelope as any).planDigest}`);}
 }
 
 
@@ -42,6 +44,7 @@ ${c.bold('Core')}
   doctor                    Validate Git + HEADBANG configuration
   review [profile]          Run deterministic review + quality gates
   commit <message> [--all]  Conventional Commit with optional staging
+  git -- <args...>          Plan or run any native Git command
   push [profile]            Push using the selected profile (primary command)
   push --all                Push every manually eligible profile
   preview [profile]         Show exactly what manual delivery would do
@@ -174,6 +177,12 @@ async function main() {
       const message = vals.slice(1).join(' ');
       if (!message) throw new Error('Commit message is required. Quote it if it contains spaces.');
       return out(await app.commit(repo, message, flags.has('--all'),flagValue('profile')));
+    }
+
+    if (command === 'git') {
+      if(gitSeparator<0||gitSeparator===argv.length-1)throw new Error('Use: headbang git [--profile=<name>] [--confirm=<digest>] -- <git-args...>');
+      const args=argv.slice(gitSeparator+1),confirmation=flagValue('confirm');
+      return out(confirmation?await app.gitExecute(repo,flagValue('profile'),args,confirmation):await app.gitPlan(repo,flagValue('profile'),args));
     }
 
     if (command === 'push') return pushCommand();

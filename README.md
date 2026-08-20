@@ -292,6 +292,59 @@ headbang providers github-public
 
 Delivery itself uses generic Git. Provider-specific APIs are only needed for workflows that interact with hosting features such as pull requests or releases.
 
+### Governed native Git
+
+Profiles can opt into the complete native Git command surface. HEADBANG passes the argument vector directly to Git without invoking a shell itself, journals completion or failure, and requires confirmation of an exact plan containing the repository, arguments, current commit, branch, and configuration.
+
+```json
+{
+  "permissions": { "git": true }
+}
+```
+
+Use `--` to keep Git's own flags separate from HEADBANG options:
+
+```bash
+headbang git -- cherry-pick a1b2c3d
+headbang git -- rebase --onto main old-base feature/topic
+headbang git -- worktree add ../review feature/topic
+```
+
+The first call only returns a plan. Execute that unchanged plan with its digest:
+
+```bash
+headbang git --confirm=<digest> -- cherry-pick a1b2c3d
+```
+
+This single surface also covers Git commands such as `bisect`, `revert`, `restore`, `switch`, `tag`, `stash`, `submodule`, and future Git commands without requiring HEADBANG-specific wrappers.
+
+`permissions.git` is intentionally a repository-control superuser capability: Git may still invoke configured hooks, aliases, helpers, editors, or transports, and the command can bypass narrower HEADBANG workflow permissions. Repository-redirection options such as `-C`, `--git-dir`, and `--work-tree` are blocked so the confirmed repository remains the execution target. Enable it only for agents that should have full Git authority in that repository.
+
+### Pull requests and change requests
+
+HEADBANG uses one provider-neutral workflow for GitHub pull requests, GitLab merge requests, Bitbucket pull requests, and Forgejo/Codeberg pull requests:
+
+```json
+{
+  "provider": "github",
+  "permissions": { "createPr": true, "mergePr": true },
+  "changeRequest": {
+    "enabled": true,
+    "target": "main",
+    "mergeStrategy": "squash"
+  }
+}
+```
+
+Plan first, then push the source branch and create exactly that request:
+
+```bash
+headbang change plan --title="Add repository control" --body="Summary and checks"
+headbang change create --title="Add repository control" --body="Summary and checks" --confirm=<digest>
+```
+
+Use `headbang change inspect|checks|reviewers|merge|close <id>` for the rest of the provider lifecycle. Credentials continue to come from environment variables, Git credential helpers, or authenticated provider tooling; HEADBANG does not store them.
+
 ### `headbang release <current-version>`
 
 Runs the built-in SemVer-lite analyzer against Conventional Commits since the most recent tag.
@@ -604,7 +657,8 @@ A profile may deny capabilities even when your credentials would technically all
     "createPr": false,
     "mergePr": false,
     "release": false,
-    "flow": false
+    "flow": false,
+    "git": false
   }
 }
 ```
@@ -645,6 +699,9 @@ Tools:
 - `headbang_deliver` — policy-driven delivery; defaults to `dryRun: true`.
 - `headbang_commit` — Conventional Commit creation.
 - `headbang_release_inspect` — read-only SemVer recommendation.
+- `headbang_git` — any native Git argument vector; defaults to an exact confirmation plan and requires `permissions.git`.
+- `headbang_change_plan` / `headbang_change_create` — plan, push and open a provider pull/change request.
+- `headbang_change_action` — inspect checks/reviewers or confirm merge/close actions.
 
 The MCP transport uses stdio. Protocol messages are written to stdout and HEADBANG diagnostics go to stderr so the protocol stream is never polluted by the CLI wordmark or debug logs.
 
