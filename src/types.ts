@@ -29,6 +29,7 @@ export interface Permissions {
   publishPackage?: boolean;
   publishReview?: boolean;
   repair?: boolean;
+  git?: boolean;
 }
 
 export interface ReviewConfig {

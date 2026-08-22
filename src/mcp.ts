@@ -8,7 +8,7 @@ import { loadConfig } from './config/load.js';
 
 const text=(x:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(x,null,2)}]});
 const repoSchema=z.object({repo:z.string().default('.')});
-function build(){const server=new McpServer({name:'headbang',version:'2.0.0'});
+function build(){const server=new McpServer({name:'headbang',version:'2.0.2'});
   const guarded=async(repo:string,action:string,input:unknown,dryRun:boolean,confirmation:string|undefined,execute:()=>Promise<unknown>)=>{const planned=await app.mutationPlan(repo,action,input);if(dryRun)return planned;requireConfirmation(planned.data,confirmation);return execute();};
   server.registerTool('headbang_status',{description:'Inspect repository status. Read-only.',inputSchema:repoSchema},async({repo})=>text(await app.status(repo)));
   server.registerTool('headbang_review',{description:'Run structured review and configured quality gates.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.review(repo,profile)));
@@ -17,6 +17,7 @@ function build(){const server=new McpServer({name:'headbang',version:'2.0.0'});
   server.registerTool('headbang_deliver',{description:'Alias for governed delivery. Defaults to a confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,dryRun,confirmation})=>text(await guarded(repo,'deliver',{profile},dryRun,confirmation,()=>app.deliver(repo,profile,false))));
   server.registerTool('headbang_delivery_group',{description:'Deliver a configured set or channel with per-destination results.',inputSchema:z.object({repo:z.string().default('.'),kind:z.enum(['set','channel']),name:z.string(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,kind,name,dryRun,confirmation})=>text(await guarded(repo,'delivery-group',{kind,name},dryRun,confirmation,()=>app.deliverGroup(repo,kind,name,false))));
   server.registerTool('headbang_commit',{description:'Create a governed Conventional Commit. Defaults to a confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),message:z.string(),all:z.boolean().default(false),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,message,all,dryRun,confirmation})=>text(await guarded(repo,'commit',{profile,message,all},dryRun,confirmation,()=>app.commit(repo,message,all,profile))));
+  server.registerTool('headbang_git',{description:'Run any native Git argument vector without a shell. Requires permissions.git and defaults to an exact confirmation plan.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),args:z.array(z.string().min(1)).min(1),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,args,dryRun,confirmation})=>text(dryRun?await app.gitPlan(repo,profile,args):await app.gitExecute(repo,profile,args,confirmation)));
   server.registerTool('headbang_flow_status',{description:'Inspect native Git Flow readiness. Read-only.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional()})},async({repo,profile})=>text(await app.flowStatus(repo,profile)));
   server.registerTool('headbang_flow_init',{description:'Plan or explicitly initialize a missing configured develop branch from main.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,dryRun,confirmation})=>text(await guarded(repo,'flow-init',{profile},dryRun,confirmation,()=>app.flowInit(repo,profile))));
   server.registerTool('headbang_flow_start',{description:'Plan or start a native Git Flow branch.',inputSchema:z.object({repo:z.string().default('.'),profile:z.string().optional(),kind:z.enum(['feature','release','hotfix']),name:z.string(),dryRun:z.boolean().default(true),confirmation:z.string().optional()})},async({repo,profile,kind,name,dryRun,confirmation})=>text(await guarded(repo,'flow-start',{profile,kind,name},dryRun,confirmation,()=>app.flowStart(repo,kind,name,profile))));
@@ -56,5 +57,5 @@ function build(){const server=new McpServer({name:'headbang',version:'2.0.0'});
   return server;
 }
 const handle=serveStdio(()=>build());
-console.error('HEADBANG MCP 2.0.0 listening on stdio');
+console.error('HEADBANG MCP 2.0.2 listening on stdio');
 process.on('SIGINT',()=>void handle.close());process.on('SIGTERM',()=>void handle.close());

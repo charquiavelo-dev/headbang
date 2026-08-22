@@ -318,3 +318,30 @@ test('CLI headbang push profile performs the primary push workflow', async () =>
     await rm(base, { recursive: true, force: true });
   }
 });
+
+test('CLI native Git preserves arguments and exposes its confirmation digest', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'headbang-cli-git-'));
+  const repo = join(base, 'repo');
+  try {
+    await mkdir(repo);
+    await exec('git', ['init', '-b', 'main', repo]);
+    await git(repo, 'config', 'user.name', 'Test');
+    await git(repo, 'config', 'user.email', 'test@example.com');
+    await writeFile(join(repo, 'README.md'), '# git cli\n');
+    await writeFile(join(repo, '.headbang.json'), JSON.stringify({ version: 2, defaultProfile: 'origin', profiles: { origin: { remote: 'origin', permissions: { git: true } } } }));
+    await git(repo, 'add', '-A');
+    await git(repo, 'commit', '-m', 'feat: initial');
+    const cli = join(process.cwd(), 'dist', 'cli.js');
+    const helpPlan = JSON.parse((await exec(process.execPath, [cli, 'git', '--json', '--no-banner', '--', '--help'], { cwd: repo })).stdout);
+    assert.deepEqual(helpPlan.data.args, ['--help']);
+    const human = await exec(process.execPath, [cli, 'git', '--no-banner', '--', 'status', '--short'], { cwd: repo });
+    assert.match(human.stdout, /status --short/);
+    assert.match(human.stdout, /Confirmation digest/);
+    const plan = JSON.parse((await exec(process.execPath, [cli, 'git', '--json', '--no-banner', '--', 'branch', 'cli-created'], { cwd: repo })).stdout);
+    const done = JSON.parse((await exec(process.execPath, [cli, 'git', '--json', '--no-banner', `--confirm=${plan.planDigest}`, '--', 'branch', 'cli-created'], { cwd: repo })).stdout);
+    assert.equal(done.status, 'completed');
+    assert.ok((await git(repo, 'show-ref', '--verify', 'refs/heads/cli-created')).stdout);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

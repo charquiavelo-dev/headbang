@@ -23,10 +23,12 @@
         "mergePr": true,
         "publishReview": false,
         "repair": false,
-        "flow": false
+        "flow": false,
+        "git": true
       },
       "review": { "tasks": ["check"], "blockOn": ["critical", "high"], "scope": "branch" },
       "branch": { "strategy": "trunk", "main": "main", "allowed": ["agent/**", "feature/**", "fix/**", "chore/**"] },
+      "changeRequest": { "enabled": true, "target": "main", "mergeStrategy": "squash", "deleteBranch": false },
       "release": {
         "enabled": true,
         "tagPrefix": "v",
