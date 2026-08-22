@@ -1,5 +1,13 @@
 # Publication runbook
 
+## Read the rules — non-negotiable
+
+OpenCode is really dumb, so before acting it must:
+
+1. Read the applicable rules (project AGENTS.md/runbook + this file) at least 3 times minimum before believing it understood them.
+2. Follow the orders exactly as written. Do not be an idiot: no clever workarounds, no "better" paths, no shortcuts around a documented step, no inventing your own procedure when one exists.
+3. Keep it simple: do what was asked, nothing else.
+
 ## Non-negotiable rules
 
 - Use interactive web authentication for GitHub and npm. Never ask the user for tokens or OTP values.

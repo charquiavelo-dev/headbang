@@ -19,6 +19,7 @@ import { executeRelease, resumeRelease } from '../dist/release/executor.js';
 import { projectTree } from '../dist/projection.js';
 import { loadPlugin } from '../dist/plugins.js';
 import { runScanner } from '../dist/scanners.js';
+import { scanFiles } from '../dist/safety/scanner.js';
 import { generateReleaseNotes } from '../dist/release/notes.js';
 import { reviewRepo } from '../dist/review/reviewer.js';
 import { generateSupplyChainArtifacts } from '../dist/artifacts.js';
@@ -28,6 +29,8 @@ const exec=promisify(execFile);
 async function git(repo,...args){return exec('git',['-C',repo,...args]);}
 async function initRepo(prefix='headbang-v2-'){const base=await mkdtemp(join(tmpdir(),prefix)),repo=join(base,'repo');await mkdir(repo);await exec('git',['init','-b','main',repo]);await git(repo,'config','user.name','Test');await git(repo,'config','user.email','test@example.com');await writeFile(join(repo,'README.md'),'# test\n');await git(repo,'add','-A');await git(repo,'commit','-m','feat: initial');return{base,repo};}
 const flowProfile={remote:'origin',permissions:{flow:true},branch:{strategy:'git-flow',main:'main',develop:'develop'}};
+
+test('public scanner ignores parser delimiters but blocks literal passwords and tokens',async()=>{const base=await mkdtemp(join(tmpdir(),'headbang-scanner-'));try{await writeFile(join(base,'parser.ts'),"filled.stdout.split(/\\r?\\n/).find(line=>line.startsWith('password='))?.slice(9);\n");assert.deepEqual(await scanFiles(base,['parser.ts'],'public'),[]);await writeFile(join(base,'credentials.txt'),'password=supersecret\npassword=)supersecret\n');const findings=await scanFiles(base,['credentials.txt'],'public');assert.equal(findings.filter(finding=>finding.severity==='high'&&finding.message==='Sensitive assignment').length,2);await writeFile(join(base,'token.txt'),'ghp_abcdefghijklmnopqrst\n');const tokens=await scanFiles(base,['token.txt'],'public');assert.ok(tokens.some(finding=>finding.severity==='critical'&&finding.message==='Likely GitHub token'));}finally{await rm(base,{recursive:true,force:true});}});
 
 test('stable operation envelope, digest confirmation, and redaction',()=>{const plan={b:2,a:1,token:'npm_secret_value'};const digest=planDigest(plan);assert.equal(digest,planDigest({a:1,b:2,token:'different'}));assert.throws(()=>requireConfirmation(plan,'wrong'),/Confirmation required/);assert.equal(requireConfirmation(plan,digest),digest);assert.equal(redact(plan).token,'[REDACTED]');const result=operation({ok:true});assert.equal(result.success,true);assert.deepEqual(result.errors,[]);});
 
